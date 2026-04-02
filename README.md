@@ -2,9 +2,9 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![ANAI 2025](https://img.shields.io/badge/ANAI-2025-green.svg)](https://doi.org/10.1145/3737904.3768536)
+[![MobiCom 2025](https://img.shields.io/badge/ANAI-2025-green.svg)](https://doi.org/10.1145/3737904.3768536)
 
-**Official repository for the ANAI '25 paper: "Vomee -- A Multimodal Sensing Platform for Video, Audio, mmWave and Skeleton Data Capturing"**
+**Official repository for the MobiCom '25 paper: "Vomee -- A Multimodal Sensing Platform for Video, Audio, mmWave and Skeleton Data Capturing"**
 
 ## Overview
 
@@ -80,7 +80,7 @@ If you use Vomee in your research, please cite our paper:
   pages = {36--40},
   numpages = {5},
   keywords = {mmWave Sensing, Human Activity Recognition, Multimodal Motion Capture},
-  series = {ANAI '25}
+  series = {MobiCom '25}
 }
 ```
 
