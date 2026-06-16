@@ -12,7 +12,7 @@ Vomee is a comprehensive multimodal sensing platform designed for synchronized d
 - **Video** - High-resolution camera capture
 - **Audio** - Multi-channel audio recording
 - **mmWave** - Millimeter wave radar sensing
-- **Skeleton** - RGB-extracted skeleton tracking
+- **Skeleton** - RGB-extracted skeleton tracking via **ViTPose** (default) or MediaPipe
 
 This platform enables researchers and developers to collect rich, synchronized multimodal datasets for various applications including human activity recognition, gesture detection, and environmental sensing.
 
@@ -21,9 +21,9 @@ Vomee synchronizes multimodal signals via the host computer's timestamp. Hardwar
 ## Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
-- CUDA-capable GPU (recommended)
-- Compatible hardware sensors (TI IWR series)
+- Python 3.8+ (developed on 3.9)
+- GPU optional — pose estimation auto-selects **CUDA → Apple MPS → CPU**
+- Compatible hardware sensors (TI IWR series) for mmWave capture
 
 ### Installation
 
@@ -40,6 +40,20 @@ source venv/bin/activate  # On Windows: venv\Scriptsctivate
 pip install -r requirements.txt
 ```
 
+### AI Agent Setup (one-shot prompt)
+
+Using an AI coding assistant (Claude Code, Cursor, Copilot, Gemini…) to deploy this repo? Paste the prompt below:
+
+> Set up the **Vomee** repository on my machine and launch it.
+> 1. Detect my OS (macOS / Windows / Linux).
+> 2. Create a Python **3.9** environment — prefer conda (`conda create -n vomee python=3.9 -y && conda activate vomee`), else `python -m venv venv` and activate it.
+> 3. Install dependencies: `pip install -r requirements.txt`. This pulls **PySide6** (GUI), **torch, torchvision, ultralytics, filterpy, scipy, scikit-image, matplotlib, ffmpeg-python** (ViTPose engine), **mediapipe** (fallback pose backend), and **opencv-python, numpy, Pillow**.
+> 4. GPU is optional — pose estimation auto-selects **CUDA → Apple MPS → CPU**. Only on an **NVIDIA** machine that will also process mmWave radar, additionally install CuPy matching the CUDA version (`pip install cupy-cuda12x` or `cupy-cuda11x`); on Mac/CPU skip it — the mmWave processor falls back to NumPy.
+> 5. No manual model download needed: the smallest weights (`vitpose-s-wholebody.pth`, `yolov8n.pt`) **auto-download into `./models/` on first launch**.
+> 6. Run `python main.py` and report any errors. On macOS, grant camera permission when prompted.
+
+**Required packages** (all in `requirements.txt`): `PySide6`, `torch`, `torchvision`, `ultralytics`, `filterpy`, `scipy`, `scikit-image`, `matplotlib`, `ffmpeg-python`, `mediapipe`, `opencv-python`, `numpy`, `Pillow`. Optional: `cupy-cuda1x` (NVIDIA-only, mmWave GPU FFT).
+
 ## Features
 
 ### Synchronized Data Capture
@@ -52,7 +66,50 @@ pip install -r requirements.txt
 - **Video**: MP4, AVI with configurable resolution and frame rates
 - **Audio**: WAV, MP3 with multi-channel support
 - **mmWave**: HDF5 format with radar point clouds and processing metadata
-- **Skeleton**: JSON format with 3D joint coordinates and confidence scores
+- **Skeleton**: JSON format with per-person 2D keypoints `[x, y, confidence]`, tagged with backend, dataset, and active keypoint group
+
+## Pose Estimation
+
+Skeleton tracking uses a **pluggable backend**. **ViTPose** is the default; **MediaPipe** is kept as a lightweight fallback. Both can be switched live from the control panel or via CLI flags.
+
+### Backends
+- **ViTPose (default)** — YOLOv8 person detection + SORT tracking + Vision-Transformer 2D keypoints (vendored under `pose_studio_engine/`). The smallest model (`vitpose-s`) is used by default and runs on **CUDA → Apple MPS → CPU** automatically.
+- **MediaPipe** — 33-landmark single-person body pose, CPU-friendly fallback.
+
+> ViTPose is a **2D** pose estimator — it outputs `(x, y, confidence)` per keypoint, no depth. For 3D, lift the 2D keypoints with a separate model, use multi-view triangulation, or fuse with the mmWave/depth modalities.
+
+### Keypoint groups (ViTPose wholebody)
+The wholebody model emits 133 keypoints; you choose which group is **drawn and recorded** (this is a display/record filter — model speed is set by the model size, not the group count):
+
+| Group | Keypoints | Contents |
+|-------|-----------|----------|
+| `body` *(default)* | 23 | 17 body + 6 feet |
+| `body_face` | 91 | body + 68-point face mesh |
+| `body_hands` | 65 | body + 42 hand joints |
+| `wholebody` | 133 | body + face + hands |
+
+### Models
+The smallest weights (`vitpose-s-wholebody.pth`, `yolov8n.pt`) live in `./models/` and **auto-download on first launch** if absent. Model weights are git-ignored.
+
+### Configuration
+Defaults live in `config.py` under `POSE_PARAMS` (backend, model size, dataset, keypoint group, device). Override at launch:
+
+```bash
+python main.py --pose-backend vitpose --keypoint-group body
+python main.py --pose-backend mediapipe          # use the fallback
+```
+
+## Interface
+
+Vomee ships a desktop dashboard built with **PySide6 + Qt Quick (QML)**:
+
+- **Live preview on launch** — the camera and radar heatmaps stream the moment the app opens; **Start** only begins *recording* (it no longer gates the preview).
+- **Layout** — camera on the left with a live telemetry HUD (engine · device · FPS · sync · frames); Range-Doppler and Range-Azimuth heatmaps stacked on the right; all controls in the top bar.
+- **Live controls** — toggle the skeleton, switch pose backend (ViTPose / MediaPipe) and keypoint group, and start/stop recording without restarting.
+
+```bash
+python main.py
+```
 
 ## Hardware Requirements
 

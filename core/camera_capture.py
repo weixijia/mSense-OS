@@ -1,10 +1,16 @@
 """
 Camera Capture Module
 
-Webcam capture with MediaPipe Pose skeleton detection.
+Webcam capture with pluggable pose estimation. ViTPose (smallest 's' model) is
+the default skeleton-tracking backend; MediaPipe is available as a fallback.
+
+The heavy pose model is loaded asynchronously so the camera preview stays live
+while the model initializes, and backend/keypoint-group switches happen without
+blocking the capture loop.
 """
 
 import threading
+import platform
 import numpy as np
 import cv2
 from datetime import datetime
@@ -13,75 +19,22 @@ import time
 
 import sys
 sys.path.append('..')
-from config import CAMERA_PARAMS, MEDIAPIPE_PARAMS
+from config import CAMERA_PARAMS, POSE_PARAMS
 
-
-def _init_mediapipe():
-    """Initialize MediaPipe components."""
-    try:
-        import mediapipe
-
-        # Try multiple import paths - MediaPipe package structure varies by version
-        mp_pose = None
-        mp_drawing = None
-        mp_drawing_styles = None
-
-        # Method 1: Access through mediapipe.solutions attribute (set by __init__.py)
-        if hasattr(mediapipe, 'solutions'):
-            try:
-                mp_pose = mediapipe.solutions.pose
-                mp_drawing = mediapipe.solutions.drawing_utils
-                mp_drawing_styles = mediapipe.solutions.drawing_styles
-                print(f"[Camera] MediaPipe {mediapipe.__version__} ready (via attribute)")
-                return True, mediapipe, mp_pose, mp_drawing, mp_drawing_styles
-            except Exception as e:
-                print(f"[Camera] solutions attribute failed: {e}")
-
-        # Method 2: Direct import from mediapipe.python.solutions (actual package location)
-        try:
-            import mediapipe.python.solutions.pose as mp_pose
-            import mediapipe.python.solutions.drawing_utils as mp_drawing
-            import mediapipe.python.solutions.drawing_styles as mp_drawing_styles
-            print(f"[Camera] MediaPipe {mediapipe.__version__} ready (via python.solutions)")
-            return True, mediapipe, mp_pose, mp_drawing, mp_drawing_styles
-        except ImportError as e:
-            print(f"[Camera] python.solutions import failed: {e}")
-
-        # Method 3: Direct import (older versions)
-        try:
-            import mediapipe.solutions.pose as mp_pose
-            import mediapipe.solutions.drawing_utils as mp_drawing
-            import mediapipe.solutions.drawing_styles as mp_drawing_styles
-            print(f"[Camera] MediaPipe {mediapipe.__version__} ready (direct import)")
-            return True, mediapipe, mp_pose, mp_drawing, mp_drawing_styles
-        except ImportError as e:
-            print(f"[Camera] direct solutions import failed: {e}")
-
-        print("[Camera] MediaPipe solutions not available")
-        print("[Camera] Try: pip uninstall mediapipe && pip install mediapipe")
-        return False, None, None, None, None
-
-    except ImportError:
-        print("[Camera] MediaPipe not installed")
-        return False, None, None, None, None
-    except Exception as e:
-        print(f"[Camera] MediaPipe error: {e}")
-        import traceback
-        traceback.print_exc()
-        return False, None, None, None, None
+from .pose import create_pose_backend
 
 
 class CameraCapture(threading.Thread):
-    """
-    Camera capture with MediaPipe Pose skeleton overlay.
-    """
+    """Camera capture thread with a swappable pose-estimation backend."""
 
     def __init__(self,
                  device_id: int = None,
                  width: int = None,
                  height: int = None,
                  fps: int = None,
-                 enable_skeleton: bool = False):
+                 enable_skeleton: bool = False,
+                 pose_backend: str = None,
+                 keypoint_group: str = None):
         threading.Thread.__init__(self, daemon=True)
 
         self.device_id = device_id if device_id is not None else CAMERA_PARAMS['device']
@@ -98,85 +51,127 @@ class CameraCapture(threading.Thread):
         self._landmarks = None
         self._frame_count = 0
 
+        # Inference timing
+        self._inference_fps = 0.0
+
         self.cap = None
-        self.pose = None
 
-        # MediaPipe components (lazy loaded)
-        self._mediapipe_available = False
-        self._mp = None
-        self._mp_pose = None
-        self._mp_drawing = None
-        self._mp_drawing_styles = None
+        # Pose backend (loaded asynchronously)
+        self._backend = None
+        self._backend_name = pose_backend or POSE_PARAMS['backend']
+        self._keypoint_group = keypoint_group or POSE_PARAMS['keypoint_group']
+        self._backend_status = "loading"   # loading | ready | error | none
+        self._backend_lock = threading.Lock()
 
-        # Init MediaPipe (lazy)
-        self._load_mediapipe()
-
-        # Init camera
+        # Init camera (fast) then kick off async backend load (slow).
         self._init_camera()
+        self._want_skeleton = enable_skeleton
+        self._load_backend_async(self._backend_name)
 
-        # Set skeleton state after init
-        if enable_skeleton and self._mediapipe_available and self.pose:
-            self._enable_skeleton = True
+    # ── camera ───────────────────────────────────────────────────
 
-    def _load_mediapipe(self):
-        """Lazy load MediaPipe to avoid import order issues."""
-        result = _init_mediapipe()
-        self._mediapipe_available = result[0]
-        self._mp = result[1]
-        self._mp_pose = result[2]
-        self._mp_drawing = result[3]
-        self._mp_drawing_styles = result[4]
+    def _camera_backends(self):
+        """Return ordered (cv2 backend, name) candidates for this OS."""
+        system = platform.system()
+        candidates = []
+        if system == "Windows":
+            candidates = [("CAP_DSHOW", "DirectShow"), ("CAP_MSMF", "MSMF")]
+        elif system == "Darwin":
+            candidates = [("CAP_AVFOUNDATION", "AVFoundation")]
+        else:  # Linux and others
+            candidates = [("CAP_V4L2", "V4L2")]
+        candidates.append(("CAP_ANY", "Auto"))
 
-        if self._mediapipe_available:
-            self._init_pose()
-            print(f"[Camera] Skeleton support: mediapipe={self._mediapipe_available}, pose={self.pose is not None}")
-        else:
-            print("[Camera] Skeleton support: DISABLED (MediaPipe failed to load)")
+        resolved = []
+        for attr, name in candidates:
+            backend = getattr(cv2, attr, None)
+            if backend is not None:
+                resolved.append((backend, name))
+        return resolved
 
     def _init_camera(self):
-        """Initialize camera."""
-        backends = [
-            (cv2.CAP_DSHOW, "DirectShow"),
-            (cv2.CAP_MSMF, "MSMF"),
-            (cv2.CAP_ANY, "Auto"),
-        ]
-
-        for backend, name in backends:
+        """Open the camera using the best backend for the current OS."""
+        for backend, name in self._camera_backends():
             try:
-                self.cap = cv2.VideoCapture(self.device_id, backend)
-                if self.cap.isOpened():
-                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                    self.cap.set(cv2.CAP_PROP_FPS, self.fps)
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-                    ret, test = self.cap.read()
+                cap = cv2.VideoCapture(self.device_id, backend)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                    cap.set(cv2.CAP_PROP_FPS, self.fps)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    ret, test = cap.read()
                     if ret:
+                        self.cap = cap
                         print(f"[Camera] {name}: {test.shape[1]}x{test.shape[0]}")
                         return
-                    self.cap.release()
-            except:
+                cap.release()
+            except Exception:
                 pass
-
         raise RuntimeError(f"Cannot open camera {self.device_id}")
 
-    def _init_pose(self):
-        """Initialize MediaPipe Pose model."""
-        try:
-            self.pose = self._mp_pose.Pose(
-                model_complexity=MEDIAPIPE_PARAMS['model_complexity'],
-                min_detection_confidence=MEDIAPIPE_PARAMS['min_detection_confidence'],
-                min_tracking_confidence=MEDIAPIPE_PARAMS['min_tracking_confidence'],
-                static_image_mode=False,
-                enable_segmentation=False
-            )
-            print("[Camera] MediaPipe Pose ready")
-        except Exception as e:
-            print(f"[Camera] MediaPipe Pose failed: {e}")
-            self.pose = None
+    # ── pose backend management ──────────────────────────────────
+
+    def _load_backend_async(self, name: str):
+        """Load (or swap) the pose backend on a worker thread."""
+        with self._backend_lock:
+            self._backend_status = "loading"
+            self._backend_name = name
+
+        def worker():
+            old = None
+            try:
+                kwargs = {}
+                if name == "vitpose":
+                    kwargs = dict(
+                        model_size=POSE_PARAMS['vitpose_model'],
+                        dataset=POSE_PARAMS['vitpose_dataset'],
+                        keypoint_group=self._keypoint_group,
+                        yolo_size=POSE_PARAMS['yolo_size'],
+                        device=POSE_PARAMS['device'],
+                        confidence_threshold=POSE_PARAMS['confidence_threshold'],
+                        skeleton_thickness=POSE_PARAMS['skeleton_thickness'],
+                    )
+                backend = create_pose_backend(name, **kwargs)
+                with self._backend_lock:
+                    old = self._backend
+                    self._backend = backend
+                    self._backend_status = "ready"
+                # Honor the requested skeleton state once the backend is ready.
+                with self._lock:
+                    if self._want_skeleton:
+                        self._enable_skeleton = True
+                print(f"[Camera] Pose backend '{name}' ready on {backend.device}")
+            except Exception as e:
+                with self._backend_lock:
+                    self._backend_status = "error"
+                print(f"[Camera] Failed to load pose backend '{name}': {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                if old is not None:
+                    try:
+                        old.close()
+                    except Exception:
+                        pass
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def set_pose_backend(self, name: str):
+        """Switch the pose backend at runtime (loads asynchronously)."""
+        if name == self._backend_name and self._backend_status == "ready":
+            return
+        self._load_backend_async(name)
+
+    def set_keypoint_group(self, group: str):
+        """Change which keypoint group is drawn/recorded."""
+        self._keypoint_group = group
+        with self._backend_lock:
+            if self._backend is not None:
+                self._backend.set_keypoint_group(group)
+
+    # ── capture loop ─────────────────────────────────────────────
 
     def run(self):
-        """Main capture loop."""
         while self._running:
             if not self.cap or not self.cap.isOpened():
                 time.sleep(0.1)
@@ -186,101 +181,88 @@ class CameraCapture(threading.Thread):
             if not ret:
                 continue
 
-            # Mirror horizontally for natural mirror effect
-            frame_bgr = cv2.flip(frame_bgr, 1)
-
-            # Convert BGR -> RGB
+            frame_bgr = cv2.flip(frame_bgr, 1)              # mirror
             frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
             timestamp = datetime.now().timestamp()
 
-            frame_with_skeleton = frame_rgb.copy()
+            frame_with_skeleton = frame_rgb
             landmarks_dict = None
 
-            # Process skeleton if enabled
-            if self._enable_skeleton and self.pose and self._mp_drawing:
-                # MediaPipe needs RGB
-                results = self.pose.process(frame_rgb)
+            with self._backend_lock:
+                backend = self._backend if self._backend_status == "ready" else None
+            run_pose = backend is not None and self._enable_skeleton
 
-                if results.pose_landmarks:
-                    # Draw on BGR image (MediaPipe drawing expects BGR)
-                    frame_bgr_draw = frame_bgr.copy()
+            if run_pose:
+                try:
+                    t0 = time.time()
+                    overlay, landmarks_dict = backend.infer(frame_rgb)
+                    dt = time.time() - t0
+                    if overlay is not None:
+                        frame_with_skeleton = overlay
+                    inf_fps = (1.0 / dt) if dt > 0 else 0.0
+                except Exception as e:
+                    inf_fps = 0.0
+                    if self._frame_count % 60 == 0:
+                        print(f"[Camera] Pose inference error: {e}")
+            else:
+                inf_fps = 0.0
 
-                    self._mp_drawing.draw_landmarks(
-                        frame_bgr_draw,
-                        results.pose_landmarks,
-                        self._mp_pose.POSE_CONNECTIONS,
-                        landmark_drawing_spec=self._mp_drawing_styles.get_default_pose_landmarks_style()
-                    )
-
-                    # Convert back to RGB for display
-                    frame_with_skeleton = cv2.cvtColor(frame_bgr_draw, cv2.COLOR_BGR2RGB)
-
-                    # Extract landmarks for recording
-                    landmarks_dict = self._extract_landmarks(results)
-
-                    if self._frame_count % 90 == 0:
-                        print("[Camera] Skeleton detected")
-
-            # Store
             with self._lock:
                 self._frame = frame_rgb
                 self._frame_with_skeleton = frame_with_skeleton
                 self._timestamp = timestamp
                 self._landmarks = landmarks_dict
+                self._inference_fps = inf_fps
                 self._frame_count += 1
 
-    def _extract_landmarks(self, results) -> Dict:
-        """Extract landmarks to dict for recording."""
-        landmarks = {'landmarks': [], 'visibility': []}
-
-        for lm in results.pose_landmarks.landmark:
-            landmarks['landmarks'].append({
-                'x': lm.x * self.width,
-                'y': lm.y * self.height,
-                'z': lm.z,
-                'visibility': lm.visibility
-            })
-            landmarks['visibility'].append(lm.visibility)
-
-        return landmarks
+    # ── accessors ────────────────────────────────────────────────
 
     def get_frame(self) -> Tuple[Optional[np.ndarray], float, Optional[Dict]]:
-        """Get frame without skeleton."""
+        """Get the latest raw RGB frame (no overlay)."""
         with self._lock:
             if self._frame is None:
                 return None, 0.0, None
             return self._frame.copy(), self._timestamp, self._landmarks
 
     def get_frame_with_overlay(self) -> Tuple[Optional[np.ndarray], float, Optional[Dict]]:
-        """Get frame with skeleton overlay."""
+        """Get the latest frame with skeleton overlay (if enabled)."""
         with self._lock:
             if self._frame is None:
                 return None, 0.0, None
-
             frame = self._frame_with_skeleton if self._enable_skeleton else self._frame
             return frame.copy(), self._timestamp, self._landmarks
 
     def set_skeleton_enabled(self, enabled: bool):
-        """Enable/disable skeleton."""
         with self._lock:
-            can_enable = enabled and self._mediapipe_available and self.pose is not None
-            self._enable_skeleton = can_enable
-            if enabled and not can_enable:
-                print(f"[Camera] Skeleton OFF (mediapipe={self._mediapipe_available}, pose={self.pose is not None})")
-            else:
-                print(f"[Camera] Skeleton {'ON' if can_enable else 'OFF'}")
+            self._want_skeleton = enabled
+            ready = self._backend is not None and self._backend_status == "ready"
+            self._enable_skeleton = bool(enabled and ready)
+        if enabled and not ready:
+            print("[Camera] Skeleton requested; pose backend still loading…")
 
     def is_skeleton_enabled(self) -> bool:
         return self._enable_skeleton
 
+    def get_pose_info(self) -> dict:
+        """Backend status for the GUI status bar."""
+        with self._backend_lock:
+            device = self._backend.device if self._backend else "-"
+            return {
+                "backend": self._backend_name,
+                "status": self._backend_status,
+                "device": device,
+                "inference_fps": self._inference_fps,
+                "keypoint_group": self._keypoint_group,
+            }
+
     def stop(self):
-        """Stop capture."""
         self._running = False
-        if self.pose:
-            try:
-                self.pose.close()
-            except ValueError:
-                pass  # Already closed
+        with self._backend_lock:
+            if self._backend:
+                try:
+                    self._backend.close()
+                except Exception:
+                    pass
         if self.cap:
             self.cap.release()
 

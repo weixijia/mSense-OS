@@ -208,3 +208,21 @@ __marimo__/
 DEVELOPMENT.md
 test_mediapipe.py
 Vomee_development_plan.md
+
+# --- Vomee: model weights (large binaries, auto-downloaded on first run) ---
+models/*.pth
+models/*.pt
+models/*.onnx
+models/*.engine
+*.pth
+*.pt
+*.onnx
+*.engine
+
+# Recording sessions / outputs
+recordings/
+output/
+*.json
+
+# OMC orchestration state (local)
+.omc/

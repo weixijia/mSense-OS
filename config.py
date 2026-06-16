@@ -36,13 +36,26 @@ BUFFER_PARAMS = {
     'file_queue_size': 100          # Async file writer queue size
 }
 
-# MediaPipe Configuration
+# MediaPipe Configuration (fallback pose backend)
 MEDIAPIPE_PARAMS = {
     'model_complexity': 1,          # 0=Lite, 1=Full, 2=Heavy
     'min_detection_confidence': 0.5,
     'min_tracking_confidence': 0.5,
     'process_width': 640,           # Downscale for processing
     'process_height': 480
+}
+
+# Pose Estimation Configuration
+# ViTPose is the default skeleton-tracking framework; MediaPipe is a fallback.
+POSE_PARAMS = {
+    'backend': 'vitpose',           # 'vitpose' (default) or 'mediapipe'
+    'vitpose_model': 's',           # ViTPose size: 's' (smallest/fastest), 'b', 'l', 'h'
+    'vitpose_dataset': 'wholebody', # 'wholebody' (133 kpts) or 'coco' (17 body kpts)
+    'keypoint_group': 'body',       # default view: 'body', 'body_face', 'body_hands', 'wholebody'
+    'yolo_size': 320,               # YOLO detector input size
+    'device': 'auto',               # 'auto' -> cuda > mps > cpu
+    'confidence_threshold': 0.3,    # min keypoint confidence to draw/record
+    'skeleton_thickness': 2
 }
 
 # Display Configuration

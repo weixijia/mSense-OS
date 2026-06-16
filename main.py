@@ -1,9 +1,9 @@
 """
 Vomee Multi-Modal Data Capture System
 
-Main application entry point. Integrates TI IWR1843 mmWave radar,
-webcam with optional MediaPipe skeleton overlay, and synchronized
-recording capabilities.
+Main application entry point (PySide6 + Qt Quick / QML UI). Integrates TI IWR1843
+mmWave radar, webcam with ViTPose / MediaPipe skeleton overlay, and synchronized
+recording.
 
 Usage:
     python main.py
@@ -14,112 +14,78 @@ import time
 import argparse
 from pathlib import Path
 
-# IMPORTANT: Import MediaPipe FIRST before any GPU libraries (CuPy, PyTorch, etc.)
-# This prevents module loading conflicts
+# IMPORTANT: import MediaPipe before heavy GPU libs (torch) to avoid loader clashes.
 try:
     import mediapipe
-    # Pre-load solutions via attribute access (triggers __init__.py import)
     _ = mediapipe.solutions.pose
     _ = mediapipe.solutions.drawing_utils
     _ = mediapipe.solutions.drawing_styles
     print(f"[Init] MediaPipe {mediapipe.__version__} pre-loaded")
-except ImportError as e:
-    print(f"[Init] MediaPipe not installed: {e}")
-except AttributeError as e:
-    print(f"[Init] MediaPipe solutions not available: {e}")
+except Exception as e:
+    print(f"[Init] MediaPipe preload skipped: {e}")
 
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
+from PySide6.QtCore import QUrl
 
-
-def setup_high_dpi():
-    """Enable high DPI scaling for PyQt5."""
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+from config import POSE_PARAMS, CAMERA_PARAMS
+from core.pose import (POSE_BACKENDS, POSE_BACKEND_LABELS,
+                       KEYPOINT_GROUPS, KEYPOINT_GROUP_LABELS)
+from gui.qml_bridge import FrameView, AppController
 
 
 def parse_args():
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description='Vomee Multi-Modal Data Capture System'
-    )
-    parser.add_argument(
-        '--camera-only',
-        action='store_true',
-        help='Run in camera-only mode (no mmWave radar)'
-    )
-    parser.add_argument(
-        '--no-camera',
-        action='store_true',
-        help='Run without camera (mmWave only)'
-    )
-    parser.add_argument(
-        '--skeleton',
-        action='store_true',
-        help='Enable skeleton detection on startup'
-    )
-    parser.add_argument(
-        '--recording-dir',
-        type=str,
-        default='./recordings',
-        help='Base directory for recordings (default: ./recordings)'
-    )
-    parser.add_argument(
-        '--camera-device',
-        type=int,
-        default=None,
-        help='Camera device ID (default: from config, usually 0)'
-    )
+    parser = argparse.ArgumentParser(description='Vomee Multi-Modal Data Capture System')
+    parser.add_argument('--camera-only', action='store_true',
+                        help='Run in camera-only mode (no mmWave radar)')
+    parser.add_argument('--no-camera', action='store_true',
+                        help='Run without camera (mmWave only)')
+    parser.add_argument('--recording-dir', type=str, default='./recordings',
+                        help='Base directory for recordings (default: ./recordings)')
+    parser.add_argument('--camera-device', type=int, default=None,
+                        help='Camera device ID (default: from config, usually 0)')
+    parser.add_argument('--pose-backend', type=str, default=None,
+                        choices=['vitpose', 'mediapipe'],
+                        help='Pose backend (default: from config, usually vitpose)')
+    parser.add_argument('--keypoint-group', type=str, default=None,
+                        choices=['body', 'body_face', 'body_hands', 'wholebody'],
+                        help='Keypoint group (default: from config, usually body)')
     return parser.parse_args()
 
 
 def main():
-    """Main application entry point."""
     args = parse_args()
 
-    # Setup high DPI before creating QApplication
-    setup_high_dpi()
-
-    # Create Qt application
-    app = QApplication(sys.argv)
+    app = QGuiApplication(sys.argv)
     app.setApplicationName("Vomee")
     app.setOrganizationName("Vomee")
 
-    # Import components
-    from gui.main_window import MainWindow
+    # ── controller + backend objects ────────────────────────────
     from core.mmwave_processor import MmWaveProcessor
     from recording.recorder import Recorder
     from recording.file_writer import FileWriter
 
-    # Create main window
-    window = MainWindow()
-
-    # Initialize mmWave processor
-    processor = MmWaveProcessor()
-    window.set_mmwave_processor(processor)
-
-    # Initialize recorder and file writer
-    recorder = Recorder(args.recording_dir)
-    window.set_recorder(recorder)
+    controller = AppController()
+    controller.set_mmwave_processor(MmWaveProcessor())
+    controller.set_recorder(Recorder(args.recording_dir))
 
     file_writer = FileWriter()
     file_writer.start()
-    window.set_file_writer(file_writer)
+    controller.set_file_writer(file_writer)
 
-    # Initialize mmWave capture (unless camera-only mode)
+    # mmWave capture (unless camera-only)
     mmwave_capture = None
     if not args.camera_only:
         try:
             from core.mmwave_capture import MmWaveCapture
             mmwave_capture = MmWaveCapture()
             mmwave_capture.start()
-            window.set_mmwave_capture(mmwave_capture)
+            controller.set_mmwave_capture(mmwave_capture)
             print("mmWave capture initialized")
         except Exception as e:
             print(f"Warning: Could not initialize mmWave capture: {e}")
-            print("Running in camera-only mode")
 
-    # Initialize camera capture (unless no-camera mode)
+    # camera capture (unless no-camera)
     camera_capture = None
     if not args.no_camera:
         try:
@@ -127,50 +93,54 @@ def main():
             from core.camera_capture import CameraCapture
             camera_capture = CameraCapture(
                 device_id=args.camera_device,
-                enable_skeleton=True  # Skeleton enabled by default
+                enable_skeleton=True,
+                pose_backend=args.pose_backend,
+                keypoint_group=args.keypoint_group,
             )
             camera_capture.start()
-            window.set_camera_capture(camera_capture)
+            controller.set_camera_capture(camera_capture)
 
-            # Wait for camera to be ready
             timeout = 5.0
             start = time.time()
             while not camera_capture.is_ready and time.time() - start < timeout:
                 time.sleep(0.1)
-
-            if camera_capture.is_ready:
-                print("Camera capture initialized successfully")
-            else:
-                print("Warning: Camera not ready within timeout")
-
+            print("Camera ready" if camera_capture.is_ready else "Warning: camera not ready in time")
         except Exception as e:
             import traceback
             print(f"Warning: Could not initialize camera: {e}")
-            print("Full traceback:")
             traceback.print_exc()
             camera_capture = None
 
-    # Log mode
-    if mmwave_capture and camera_capture:
-        print("Running with mmWave + camera")
-    elif mmwave_capture:
-        print("Running in mmWave-only mode")
-    elif camera_capture:
-        print("Running in camera-only mode")
+    # ── QML engine ───────────────────────────────────────────────
+    qmlRegisterType(FrameView, "Vomee", 1, 0, "FrameView")
 
-    # Set initial skeleton state (enabled by default)
-    if camera_capture:
-        window.control_panel.set_skeleton_enabled(True)
+    engine = QQmlApplicationEngine()
+    ctx = engine.rootContext()
+    ctx.setContextProperty("backend", controller)
+    ctx.setContextProperty("POSE_BACKENDS", list(POSE_BACKENDS))
+    ctx.setContextProperty("POSE_BACKEND_LABELS", [POSE_BACKEND_LABELS[b] for b in POSE_BACKENDS])
+    ctx.setContextProperty("KEYPOINT_GROUPS", list(KEYPOINT_GROUPS))
+    ctx.setContextProperty("KEYPOINT_GROUP_LABELS", [KEYPOINT_GROUP_LABELS[g] for g in KEYPOINT_GROUPS])
+    ctx.setContextProperty("DEFAULT_BACKEND", args.pose_backend or POSE_PARAMS['backend'])
+    ctx.setContextProperty("DEFAULT_GROUP", args.keypoint_group or POSE_PARAMS['keypoint_group'])
+    # Native display aspect ratios (width / height) so each view hugs its content.
+    ctx.setContextProperty("CAMERA_ASPECT", CAMERA_PARAMS['width'] / CAMERA_PARAMS['height'])
+    ctx.setContextProperty("HEATMAP_ASPECT", 1.0)  # RD/RA are ~square (256x256)
 
-    # Show window
-    window.show()
+    qml_path = Path(__file__).parent / "gui" / "qml" / "Main.qml"
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    if not engine.rootObjects():
+        print("Error: failed to load QML UI")
+        sys.exit(1)
 
-    # Run application
-    exit_code = app.exec_()
+    # Go live immediately (preview before any Start press).
+    controller.start_preview()
 
-    # Cleanup
+    exit_code = app.exec()
+
+    # ── cleanup ──────────────────────────────────────────────────
     print("Shutting down...")
-
+    controller.shutdown()
     if mmwave_capture:
         mmwave_capture.stop()
     if camera_capture:
@@ -178,7 +148,6 @@ def main():
     if file_writer:
         file_writer.stop()
         file_writer.join(timeout=2.0)
-
     print("Goodbye!")
     sys.exit(exit_code)
 
