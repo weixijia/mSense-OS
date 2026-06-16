@@ -141,6 +141,15 @@ def main():
     # ── cleanup ──────────────────────────────────────────────────
     print("Shutting down...")
     controller.shutdown()
+    # Tear down the QML window/engine while the backend context object is
+    # still alive, so trailing binding re-evaluations don't warn about a
+    # null `backend` during teardown. deleteLater() posts a DeferredDelete
+    # event that must be flushed explicitly (processEvents skips it).
+    from PySide6.QtCore import QEvent
+    for obj in engine.rootObjects():
+        obj.deleteLater()
+    engine.deleteLater()
+    app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     if mmwave_capture:
         mmwave_capture.stop()
     if camera_capture:
