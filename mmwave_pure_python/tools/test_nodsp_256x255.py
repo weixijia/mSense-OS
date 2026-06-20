@@ -1,6 +1,6 @@
 """
 Drive the flashed NO-DSP firmware directly in pure Python (no Studio, no TI .exe):
-  UART @ 921600 (COM4): send the 256x255 cfg + sensorStart
+  UART @ 921600 (auto-detected XDS110): send the 256x255 cfg + sensorStart
   Ethernet (UDP 4096): DCA1000 config_fpga/config_record/stream_start
 then sniff UDP 4098 to confirm raw 256x255 floods in. Run from repo root.
 """
@@ -8,8 +8,8 @@ import sys, os, time, socket, struct
 sys.path.insert(0, os.getcwd())
 from core.mmwave_trigger import DCA1000, RadarUART
 
-CFG = r'mmwave_pure_python\studio_cli\src\profiles\profile_vomee_256x255_cont.cfg'
-JSON = r'mmwave_pure_python\configFiles\cf.json'
+CFG = 'mmwave_pure_python/studio_cli/src/profiles/profile_vomee_256x255_cont.cfg'
+JSON = 'mmwave_pure_python/configFiles/cf.json'
 BYTES_IN_FRAME = 255 * 4 * 2 * 2 * 256 * 2          # 2,088,960
 
 d = DCA1000()
@@ -17,7 +17,7 @@ print('FPGA', d.read_fpga_version(), '| alive', d.sys_alive_check())
 d.reset_fpga(); time.sleep(0.5)
 
 print('\n--- sending 256x255 cfg over UART @921600 (watch for Done vs invalid) ---')
-r = RadarUART('COM4', 921600, verbose=True)
+r = RadarUART('auto', 921600, verbose=True)
 r.send_config(CFG, start=False)
 
 print('\n--- DCA1000 over Ethernet ---')

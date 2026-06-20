@@ -28,13 +28,17 @@ Tc_eff = Ntx * (idle + ramp)
 v_max = lam / (4 * Tc_eff)
 print(f'range_res={range_res*100:.2f} cm  range_max={range_max:.2f} m  v_max=±{v_max:.2f} m/s')
 
-# Processor stored arrays: axis0 = range, row0=FAR ... rowN=NEAR(0) (due to [::-1]).
-# axis1: RD = doppler (fftshifted, 0 at center), RA = azimuth bins.
+# Processor stored arrays: axis0 = range, axis1 = doppler (RD, fftshifted 0 at center) /
+# azimuth (RA). The live processor now uses flip=False, so range 0 (near) is the LAST row
+# (rendered at the BOTTOM) and far is row 0 (top).
+# WARNING: ref_rd.npy / ref_ra.npy below were captured under the OLD flip=True convention,
+# i.e. vertically mirrored vs the current pipeline. Regenerate them from a fresh capture
+# before trusting this tool's rendering.
 def plot_rd():
     fig, ax = plt.subplots(figsize=(5, 5))
     # extent: x = doppler velocity (-v_max..+v_max), y = range. row0=far -> top=range_max.
     ax.imshow(rd, aspect='auto', cmap='viridis',
-              extent=[-v_max, v_max, 0, range_max])   # origin lower => y=0 bottom=NEAR
+              extent=[-v_max, v_max, 0, range_max])   # default origin='upper' + extent y 0..max => near(0) at BOTTOM
     ax.set_title('RD — NEW Vomee orientation'); ax.set_xlabel('velocity (m/s)  [0=static@center]')
     ax.set_ylabel('range (m)  [0=near at BOTTOM]')
     ax.axvline(0, color='r', lw=0.6, ls='--')

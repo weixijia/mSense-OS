@@ -1,9 +1,10 @@
 """
 Pure-Python mmWave trigger — replaces the mmWave Studio + "kill DCA1000 process"
 workflow. Configures the AWR1843/IWR1843 over the CLI UART and the DCA1000EVM over
-UDP, then starts chirping. No mmWave Studio, no C extension; works on Windows/Linux.
+UDP, then starts chirping. No mmWave Studio, no C extension; works on Windows/macOS/Linux.
 
-Requires the radar in functional mode (SOP=001) running xwr18xx_mmw_demo.
+Requires the radar in functional mode (SOP=001) running the flashed no-DSP
+studio_cli firmware (xwr18xx, CLI @ 921600 baud).
 
 Trigger sequence (mirrors skeleton.lua minus the SPI firmware load that the flashed
 mmw_demo replaces):
@@ -22,42 +23,77 @@ import serial
 from serial.tools import list_ports
 
 
-XDS110_VIDPID = (0x0451, 0xBEF3)   # TI XDS110 "Application/User UART" = the radar CLI port
+XDS110_VIDPID = (0x0451, 0xBEF3)   # TI XDS110 = the radar CLI port (+ an Aux UART, same VID:PID)
+_LAST_PORT = None                  # last resolved CLI device, reused by stop_radar on shutdown
 
 
 # ---------------- serial port auto-detection (cross-platform) ----------------
-def find_radar_port():
+def _is_cli_uart(device, baud, timeout=0.5):
+    """True if `device` answers the mmWave CLI banner (i.e. it's the Application UART,
+    not the Auxiliary data UART). Read-only probe: opens, sends 'version', closes."""
+    try:
+        s = serial.Serial(device, baud, timeout=timeout)
+    except Exception:
+        return False
+    try:
+        time.sleep(0.2)
+        s.reset_input_buffer()
+        s.write(b'version\n')
+        time.sleep(0.3)
+        resp = s.read(s.in_waiting or 1)
+        return (b'mmwDemo' in resp) or (b'mmWave SDK' in resp)
+    except Exception:
+        return False
+    finally:
+        try:
+            s.close()
+        except Exception:
+            pass
+
+
+def find_radar_port(baud=921600, probe=True):
     """Auto-detect the radar CLI UART (XDS110) on Linux/macOS/Windows, or None.
 
-    Linux -> /dev/ttyACM0   macOS -> /dev/cu.usbmodem*   Windows -> COMx
-    (Mirrors mmwave_launcher.find_radar_port; kept here so the production trigger
-    path is self-contained and import-safe from main.py.)
+    The XDS110 exposes TWO same-VID:PID CDC ports — the Application/User UART (the
+    CLI port we want) and an Auxiliary data UART — and on Linux the per-interface
+    string descriptors are usually absent, so they can't be told apart by text.
+    With probe=True (default) we OPEN each candidate and keep the one that answers
+    `version` with the mmWave CLI banner; this is robust to enumeration order
+    (which device is ttyACM0 vs ACM1, hub re-ordering, a stale ACM holding the low
+    name, etc.). probe=False returns a name-sorted best-guess without opening ports.
     """
     xds = [p for p in list_ports.comports() if (p.vid, p.pid) == XDS110_VIDPID]
-
-    def is_app_uart(p):
-        blob = ' '.join(x for x in (p.description, getattr(p, 'interface', None),
-                                    getattr(p, 'product', None)) if x)
-        return ('Application' in blob) or ('User UART' in blob)
-
-    cands = [p for p in xds if is_app_uart(p)] or xds
-    if not cands:
+    if not xds:
         return None
-    # macOS: prefer the callout device /dev/cu.* ; otherwise lowest name (ttyACM0 < ttyACM1).
-    cands.sort(key=lambda p: (0 if str(p.device).startswith('/dev/cu.') else 1, str(p.device)))
-    return cands[0].device
+    # deterministic order: macOS callout /dev/cu.* first, then lowest device name.
+    xds.sort(key=lambda p: (0 if str(p.device).startswith('/dev/cu.') else 1, str(p.device)))
+    if not probe:
+        return xds[0].device
+    for p in xds:
+        if _is_cli_uart(p.device, baud):
+            return p.device
+    # No candidate answered (radar may be pre-reset / momentarily unresponsive). Fall back
+    # to the name-sorted best-guess instead of failing — trigger() resets the radar right
+    # before opening, after which it responds; this is no worse than the pre-probe behaviour.
+    return xds[0].device
 
 
-def _resolve_port(com):
-    """Return an explicit serial device, auto-detecting when com is None/'auto'/''."""
-    if com and com != 'auto':
-        return com
-    dev = find_radar_port()
-    if not dev:
-        raise RuntimeError("could not auto-detect the radar CLI UART (XDS110 0451:BEF3); "
-                           "plug in the radar USB, or pass --trigger-com / set "
-                           "MMWAVE_TRIGGER['com_port'] explicitly")
-    return dev
+def _resolve_port(com, baud=921600):
+    """Return an explicit serial device. None/'auto' -> probe-detect; '' is an error."""
+    global _LAST_PORT
+    if com is None or com == 'auto':
+        dev = find_radar_port(baud=baud)
+        if not dev:
+            raise RuntimeError(
+                "could not auto-detect a responding radar CLI UART (XDS110 0451:BEF3 "
+                "replying to 'version'); plug in the radar USB, confirm SOP=functional, "
+                "or pass --trigger-com / set MMWAVE_TRIGGER['com_port'] explicitly")
+        _LAST_PORT = dev
+        return dev
+    if com == '':
+        raise ValueError("radar com_port is an empty string; set a device path or 'auto'")
+    _LAST_PORT = com
+    return com
 
 
 # ---------------- DCA1000 control (UDP, port 4096) ----------------
@@ -112,15 +148,23 @@ class DCA1000:
         cap = {'SDCardStorage': '01', 'ethernetStream': '02'}
         fmt = {1: '01', 2: '02', 3: '03', '1': '01', '2': '02', '3': '03'}
         c = json.load(open(cf_json, encoding='utf8'))['DCA1000Config']
-        payload = (log[c['dataLoggingMode']] + lvds[c['lvdsMode']] + xfer[c['dataTransferMode']]
-                   + cap[c['dataCaptureMode']] + fmt[c['dataFormatMode']] + '1e')
+        try:
+            payload = (log[c['dataLoggingMode']] + lvds[c['lvdsMode']] + xfer[c['dataTransferMode']]
+                       + cap[c['dataCaptureMode']] + fmt[c['dataFormatMode']] + '1e')
+        except KeyError as e:
+            raise ValueError(f"cf.json DCA1000Config: missing/unsupported value for {e} "
+                             "(dataLoggingMode/lvdsMode/dataTransferMode/dataCaptureMode/dataFormatMode)") from e
         plen = codecs.encode(struct.pack('<H', len(codecs.decode(payload, 'hex'))), 'hex').decode()
         return self._cmd(_CMD['CONFIG_FPGA_GEN'], plen, payload)
 
     def config_record(self, cf_json):
         c = json.load(open(cf_json, encoding='utf8'))['DCA1000Config']
+        try:
+            delay_clk = int(c['packetDelay_us'] * _CLK_FACTOR / _CLK_PERIOD_NS)
+        except KeyError as e:
+            raise ValueError(f"cf.json DCA1000Config: missing {e} (packetDelay_us)") from e
         bpp = codecs.encode(struct.pack('<H', _MAX_BYTES_PER_PACKET), 'hex').decode()
-        delay = codecs.encode(struct.pack('<H', int(c['packetDelay_us'] * _CLK_FACTOR / _CLK_PERIOD_NS)), 'hex').decode()
+        delay = codecs.encode(struct.pack('<H', delay_clk), 'hex').decode()
         payload = bpp + delay + '0000'
         plen = codecs.encode(struct.pack('<H', len(codecs.decode(payload, 'hex'))), 'hex').decode()
         return self._cmd(_CMD['CONFIG_PACKET_DATA'], plen, payload)
@@ -148,9 +192,9 @@ def parse_num_loops(cfg_path):
 
 
 class RadarUART:
-    def __init__(self, com='auto', baud=115200, verbose=False):
+    def __init__(self, com='auto', baud=921600, verbose=False):
         self.verbose = verbose
-        self.port = serial.Serial(_resolve_port(com), baud, timeout=0.3)
+        self.port = serial.Serial(_resolve_port(com, baud), baud, timeout=0.3)
         time.sleep(0.2)
         self.port.reset_input_buffer()
 
@@ -181,20 +225,23 @@ class RadarUART:
             pass
 
 
-def trigger(com='auto', baud=115200, cfg_file=None, json_file=None, verbose=True):
+def trigger(com='auto', baud=921600, cfg_file=None, json_file=None, verbose=True):
     """Run the full trigger. Returns numLoops parsed from the cfg (for ADC_PARAMS)."""
-    com = _resolve_port(com)
     dca = DCA1000()
     radar = None
     try:
         if verbose:
-            print(f"[trigger] radar CLI UART: {com}")
             print(f"[trigger] FPGA {dca.read_fpga_version()} alive={dca.sys_alive_check()}")
         # Reboot the radar for a clean RF state. This is REQUIRED for reliability:
         # after idle time or repeated start/stop, sensorStart returns "Done" but no LVDS
         # data streams until a hardware reset. reset_radar (RESET_AR_DEV over Ethernet)
         # reboots the flashed firmware; wait ~2.5 s for it to come back on the CLI UART.
         dca.reset_radar(); dca.reset_fpga(); time.sleep(2.5)
+        # Resolve the CLI port AFTER the reset: the radar now answers 'version', so the
+        # probe in find_radar_port() can reliably tell the CLI UART from the Aux UART.
+        com = _resolve_port(com, baud)
+        if verbose:
+            print(f"[trigger] radar CLI UART: {com}")
         radar = RadarUART(com, baud, verbose=verbose)
         radar.port.reset_input_buffer()        # drop the post-reboot banner
         radar.send_config(cfg_file, start=False)
@@ -212,10 +259,21 @@ def trigger(com='auto', baud=115200, cfg_file=None, json_file=None, verbose=True
             radar.close()
 
 
-def stop_radar(com='auto', baud=115200):
-    """Stop chirping on shutdown (best-effort)."""
+def stop_radar(com='auto', baud=921600):
+    """Stop chirping AND the DCA1000 stream on shutdown (best-effort)."""
+    # 1) tell the DCA1000 FPGA to stop recording/streaming (trigger() only started it;
+    #    otherwise the FPGA stays in RECORD state and keeps emitting on :4098 after exit).
     try:
-        r = RadarUART(com, baud, verbose=False)  # RadarUART resolves 'auto' via _resolve_port
+        dca = DCA1000()
+        dca.stream_stop()
+        dca.close()
+    except Exception:
+        pass
+    # 2) sensorStop over the CLI UART; reuse the port trigger() already resolved so we
+    #    don't re-probe (and can't pick a different device) at shutdown.
+    try:
+        port = _LAST_PORT if (com in (None, 'auto', '') and _LAST_PORT) else com
+        r = RadarUART(port, baud, verbose=False)
         r.stop_sensor()
         r.close()
     except Exception:

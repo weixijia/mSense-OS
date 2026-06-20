@@ -67,7 +67,7 @@ def main():
     if args.trigger or trig.get('enable'):
         from core import mmwave_trigger
         com = args.trigger_com or trig['com_port']
-        baud = trig.get('baud', 115200)
+        baud = trig.get('baud', 921600)
         cfg_file = args.trigger_cfg or trig['cfg_file']
         json_file = trig['json_file']
         print(f"[trigger] starting radar from Python: cfg={cfg_file} com={com}@{baud}")
@@ -76,6 +76,10 @@ def main():
             if n_loops:
                 _cfg.ADC_PARAMS['chirps'] = n_loops  # keep frame size consistent
                 print(f"[trigger] ADC_PARAMS['chirps'] set to {n_loops} (from frameCfg)")
+            else:
+                print(f"[trigger] WARNING: could not parse frameCfg numLoops from {cfg_file}; "
+                      f"using ADC_PARAMS['chirps']={_cfg.ADC_PARAMS['chirps']} — frame size may "
+                      "mismatch the radar and break the reshape if they differ.")
             triggered = True
         except Exception as e:
             import traceback

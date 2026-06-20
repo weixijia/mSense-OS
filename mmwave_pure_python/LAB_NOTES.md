@@ -395,3 +395,22 @@ off, DCA lane=2 fmt=3, capture → `captured_adc_vomee/`). Original saved `.orig
 SOP for this board (slide switch, 左=ON): **Flashing=101=左右左**, **Functional=001=左右右**.
 NEXT: user flashes the .bin (UniFlash, DCA1000 MIPI disconnected) → functional → reconnect;
 then run mmwave_studio_cli.exe → verify captured frame = 2,088,960 B (256×255).
+
+## 9. ★ ORIENTATION CORRECTION (2026-06-20, empirically re-measured on Ubuntu) ★
+The T5 (2026-06-17) claim that the processor's `[::-1]` (flip=True) put "FAR at TOP,
+near(0) at BOTTOM" is **BACKWARDS**. Re-measured on live hardware by averaging frames and
+comparing top-vs-bottom row energy (and confirmed visually by the user against the original
+Studio-era display):
+- **flip=True  → near at TOP**   (the old default; this was the regression the user saw)
+- **flip=False → near at BOTTOM** ← desired, matches the original published pipeline.
+⇒ `core/mmwave_processor.py` now uses **flip=False for BOTH rd and ra** (range 0/near at the
+bottom). The recorded `.npy` (what the downstream model consumes) therefore has near at the
+bottom. If a model was trained on near-at-top data, revert both rd/ra to flip=True.
+Any older doc/tool text saying "[::-1] ⇒ row0=far" is wrong; trust this section.
+
+### RD looks grainier than RA — NOT a bug (2026-06-20)
+RD doppler = 255 REAL chirp-FFT bins (full resolution, no padding) → grainy/“lined”.
+RA azimuth = 8 virtual antennas zero-padded to 256 (32× oversampled) → inherently smooth.
+Measured adjacent-column correlation: RD≈0.76 vs RA≈0.998. The RD “lines” are real data, not
+rendering. Do NOT smooth the recorded arrays (the model trains on raw `.npy`); any smoothing
+must be display-only. Studio’s RD looks smooth only because it oversamples the doppler FFT.
