@@ -191,10 +191,35 @@ def parse_num_loops(cfg_path):
     return None
 
 
+def _open_serial(device, baud, timeout=0.3, retries=16, delay=0.5):
+    """Open the serial port, retrying on EBUSY (Errno 16).
+
+    After the radar (re)enumerates, ModemManager/brltty transiently grab a fresh
+    /dev/ttyACM* for several seconds; the probe->reopen gap can also race them. Retry for
+    ~`retries*delay` s; if still busy, raise a clear error pointing at the permanent udev fix.
+    """
+    last = None
+    for _ in range(retries):
+        try:
+            return serial.Serial(device, baud, timeout=timeout)
+        except (serial.SerialException, OSError) as e:
+            if getattr(e, "errno", None) != 16 and "busy" not in str(e).lower():
+                raise
+            last = e
+            time.sleep(delay)
+    raise RuntimeError(
+        "%s stayed busy for ~%.0fs; a service (almost certainly ModemManager) is holding it. "
+        "Permanent fix — make ModemManager ignore the radar UART:\n"
+        "  echo 'ATTRS{idVendor}==\"0451\", ENV{ID_MM_DEVICE_IGNORE}=\"1\"' | "
+        "sudo tee /etc/udev/rules.d/99-vomee-radar.rules\n"
+        "  sudo udevadm control --reload && sudo udevadm trigger\n"
+        "then power-cycle the radar. (last error: %s)" % (device, retries * delay, last))
+
+
 class RadarUART:
     def __init__(self, com='auto', baud=921600, verbose=False):
         self.verbose = verbose
-        self.port = serial.Serial(_resolve_port(com, baud), baud, timeout=0.3)
+        self.port = _open_serial(_resolve_port(com, baud), baud)
         time.sleep(0.2)
         self.port.reset_input_buffer()
 
