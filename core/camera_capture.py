@@ -232,6 +232,17 @@ class CameraCapture(threading.Thread):
             frame = self._frame_with_skeleton if self._enable_skeleton else self._frame
             return frame.copy(), self._timestamp, self._landmarks
 
+    def get_frame_full(self):
+        """Return (raw, overlay, timestamp, landmarks) atomically from the SAME camera
+        frame under one lock — so a saved raw frame, its displayed overlay, its timestamp
+        and its skeleton stay aligned (no inter-call frame skew)."""
+        with self._lock:
+            if self._frame is None:
+                return None, None, 0.0, None
+            raw = self._frame.copy()
+            overlay = (self._frame_with_skeleton if self._enable_skeleton else self._frame).copy()
+            return raw, overlay, self._timestamp, self._landmarks
+
     def set_skeleton_enabled(self, enabled: bool):
         with self._lock:
             self._want_skeleton = enabled

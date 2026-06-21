@@ -24,6 +24,7 @@ class DataType(Enum):
     RAW_MMWAVE = "raw_mmwave"
     RD_HEATMAP = "rd_heatmap"
     RA_HEATMAP = "ra_heatmap"
+    DA_HEATMAP = "da_heatmap"
     CAMERA_FRAME = "camera_frame"
     SKELETON = "skeleton"
 
@@ -105,6 +106,8 @@ class FileWriter(threading.Thread):
             elif task.data_type == DataType.RD_HEATMAP:
                 self._write_numpy(task.path, task.data)
             elif task.data_type == DataType.RA_HEATMAP:
+                self._write_numpy(task.path, task.data)
+            elif task.data_type == DataType.DA_HEATMAP:
                 self._write_numpy(task.path, task.data)
             elif task.data_type == DataType.CAMERA_FRAME:
                 self._write_numpy(task.path, task.data)
@@ -219,6 +222,10 @@ class FileWriter(threading.Thread):
     def write_ra_heatmap(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
         """Submit Range-Azimuth heatmap for writing."""
         return self.submit(DataType.RA_HEATMAP, path, data, frame_num)
+
+    def write_da_heatmap(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
+        """Submit Doppler-Azimuth heatmap for writing."""
+        return self.submit(DataType.DA_HEATMAP, path, data, frame_num)
 
     def write_camera_frame(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
         """Submit camera frame for writing."""
