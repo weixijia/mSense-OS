@@ -20,6 +20,34 @@
 
 ---
 
+## ⚠️ CORRECTION (2026-06-21 PM, Ubuntu session) — the transport premise was WRONG
+
+This document's plan assumes the xWR1843 is controlled **entirely over SPI** (like the AWR2243 that
+`pyRadar`/`fpga_udp` targets). **That is wrong for the xWR1843 and is why every SPI attempt died at
+`rlDevicePowerOn` with `-8 = RL_RET_CODE_RESP_TIMEOUT`.** Confirmed empirically + via TI docs:
+
+- The xWR1843 bring-up is **TWO-PHASE**, not SPI-only:
+  1. **Firmware download → UART/RS232** (XDS110 *application* UART, 921600 baud). `ar1.Connect(COM_PORT,
+     921600,…)` in `skeleton.lua` is this serial port. `DownloadBSSFw`(`xwr18xx_radarss.bin`) then
+     `DownloadMSSFw`(`xwr18xx_masterss.bin`) are sent over **UART** into RAM. The xWR1843 **ROM
+     bootloader is UART-only** — it does **not** speak mmwavelink-over-SPI.
+  2. **Config + trigger → SPI** (FT4232H / AR-DevPack). Only **after** masterss runs does the device
+     bring up the SPI mmwavelink interface; *then* `PowerOn`/`ProfileConfig`/`FrameConfig`/`StartFrame`
+     work over SPI. (AWR2243 has no MCU, so it's all-SPI incl. firmware — hence pyRadar lacks Phase 1.)
+- Ruled out as causes of `-8` (no change): device-type `18XX` vs `22XX`; software SOP mode `2` vs `4`;
+  physical SOP + power-cycle. The host-side FTDI GPIO/reset all "succeed" but the ROM never answers on
+  SPI because **firmware was never loaded over UART first**.
+- **Confirmed-correct so far:** physical **SOP=011 (= SOP-2 dev mode)**; `SOPControl(2)`; the rf_eval
+  bins; the DCA1000 UDP capture path.
+- **New work required (not in pyRadar):** a **Phase-1 UART firmware-download** stage implementing the
+  xWR ROM serial-bootloader "download to RAM" protocol. Implementation path (reuse existing Linux tool
+  vs hand-write the bootloader) is under evaluation — see the session notes / latest research.
+
+The §7–§9 SPI details below remain valid for **Phase 2 (config)**, but Phase 1 (UART firmware download)
+must precede them. Everything else (root cause = firmware phase noise, the fix = load rf_eval) stands.
+
+---
+
 ## 1. TL;DR
 
 - **Symptom:** pure-Python Vomee's RD heatmap shows **equidistant vertical lines** around the
