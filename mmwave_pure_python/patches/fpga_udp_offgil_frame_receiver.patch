@@ -1,5 +1,5 @@
 diff --git a/fpga_udp/src/main.cpp b/fpga_udp/src/main.cpp
-index 05f770d..b3ffe12 100644
+index 05f770d..7ea14c9 100644
 --- a/fpga_udp/src/main.cpp
 +++ b/fpga_udp/src/main.cpp
 @@ -2,6 +2,9 @@
@@ -12,7 +12,7 @@ index 05f770d..b3ffe12 100644
  #include <future>
  #include <mutex>
  #include <cmath>
-@@ -305,30 +308,143 @@ py::array_t<uint8_t> udp_read_thread_get_frames(uint32_t frameNum, int bytesInFr
+@@ -305,30 +308,146 @@ py::array_t<uint8_t> udp_read_thread_get_frames(uint32_t frameNum, int bytesInFr
      uint64_t bytesCnt;
      int receivePacketLen=0,lastFrameTransferedBytes;
  
@@ -130,12 +130,15 @@ index 05f770d..b3ffe12 100644
 +                }
 +                cur_idx = fidx; cur_filled = 0;
 +                cur_gap = (taint_next > 0);                          // carry a straddling gap into the new frame
-+                if (taint_next > 0) taint_next--;
 +            }
 +            memcpy(cur.data() + foff, p, take);
 +            cur_filled += take;
 +            off += take; p += take; L -= take;
 +        }
++        // taint expires after ONE packet: only a gap that straddles into a new frame (i.e. the
++        // frame advanced on this same packet) taints the next frame. An in-frame gap must not
++        // linger across later packets and spuriously drop a good downstream frame.
++        if (taint_next > 0) taint_next--;
 +    }
 +}
 +
@@ -163,7 +166,7 @@ index 05f770d..b3ffe12 100644
  PYBIND11_MODULE(fpga_udp, m) {
      m.doc() = R"pbdoc(
          FPGA UDP reader & mmwavelink API plugin
-@@ -438,6 +554,32 @@ PYBIND11_MODULE(fpga_udp, m) {
+@@ -438,6 +557,32 @@ PYBIND11_MODULE(fpga_udp, m) {
              delete udp_queue_g;
          }
      });
