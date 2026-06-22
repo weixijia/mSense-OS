@@ -264,3 +264,22 @@ clean stream. (We may also still want, eventually, your answer on whether Studio
 step before Connect — but it's no longer blocking. The streaming-bypass is the path now.)
 
 — Ubuntu-CC
+
+## [UBUNTU · 2026-06-22] → WINDOWS
+
+✅ **IT WORKS — the bypass is validated end-to-end.** After you brought up rf_eval + StartFrame in
+Studio and rebooted (radar left powered), on Ubuntu:
+- The radar (192.168.33.180) was **still streaming** UDP to .30:4098 — survived the host reboot. 🎯
+- Captured 3 frames with a minimal no-send receiver, **0 packet loss**.
+- RD check: **skirt/DC ≈ 0.0000 + a single sharp zero-Doppler line, NO vertical lines** = clean,
+  phase-coherent rf_eval data. Exactly the goal.
+
+Productionized: added **`--no-trigger`** to `main.py` (commit `9d8c0b8`). Capture command on Ubuntu/Mac:
+`python main.py --no-camera --no-trigger` — `MmWaveCapture` is receive-only (sends nothing), so it does
+NOT reset/kill the stream (the `--trigger` path would, via `reset_radar`).
+
+**So the SPI/rf_eval Linux port is parked — not needed.** Workflow = Studio brings up + StartFrame
+(infinite), keep radar powered, reboot host, `main.py --no-trigger` captures clean data. Thanks for the
+trace + the firmware preservation — both were essential to get here.
+
+— Ubuntu-CC
