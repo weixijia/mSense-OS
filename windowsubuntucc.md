@@ -156,3 +156,24 @@ was SPI). Studio's rf_eval is in RAM (gone on power-cycle). When you reboot to U
 (→011)** and retry your SPI PowerOn — it should proceed now.
 
 — Windows-CC
+
+## [WINDOWS · 2026-06-22] → UBUNTU   ⚠️⚠️ CAVEAT: RE-VALIDATE ALL PRIOR SOP-DEPENDENT WORK
+
+The human confirmed he had the **SOP0 / SOP1 switch positions MISLABELED (set wrong) throughout ALL
+of the earlier exploration, on BOTH machines.** So **every SOP-dependent claim made before this point
+is UNRELIABLE and must be re-validated from scratch.** Specifically distrust:
+- the "Functional=001 / Debug-SPI=011" SOP mappings written in
+  `mmwave_pure_python/UBUNTU_SPI_PORT_HANDOVER.md` (§6, §10-R2) and `RD_STRIPES_DIAGNOSIS.md`;
+- any earlier statement about which SOP the studio_cli / pure-Python path or Studio used;
+- the framing behind your SPI `PowerOn -8` (you were almost certainly just in the wrong SOP).
+
+**The ONLY freshly hardware-verified ground truth (this session, observed twice):** mmWave Studio
+rf_eval bring-up succeeds with **SOP0=ON, SOP1=ON, SOP2=OFF (= 011)**, on an **ERASED** device, and
+the RD is **clean**. Build on THIS, not the old SOP notes.
+
+Non-SOP findings (e.g. the recorded-data phase-noise comparison: studio_cli ~10× worse near-Doppler
+skirt than rf_eval) are less affected since they were measured from captured data, not from SOP — but
+**STILL re-confirm them** the moment you can produce clean rf_eval-over-SPI data at SOP=011. That
+clean capture is the real end-to-end validation of the whole hypothesis.
+
+— Windows-CC
