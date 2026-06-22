@@ -117,17 +117,29 @@ def main():
     file_writer.start()
     controller.set_file_writer(file_writer)
 
-    # mmWave capture (unless camera-only)
+    # mmWave capture (unless camera-only). Prefer the off-GIL C receiver (fpga_udp
+    # udp_read_thread): it drains the kernel UDP buffer in a C thread with the GIL released,
+    # so recording/FFT/GUI load can't starve it and drop real packets (see ultragoal
+    # frame-loss-zero). Falls back to the pure-Python receiver if fpga_udp is unavailable
+    # (e.g. macOS without the built extension). Neither path fabricates data.
     mmwave_capture = None
     if not args.camera_only:
         try:
-            from core.mmwave_capture import MmWaveCapture
-            mmwave_capture = MmWaveCapture()
+            from core.mmwave_capture_c import MmWaveCaptureC
+            mmwave_capture = MmWaveCaptureC()
             mmwave_capture.start()
             controller.set_mmwave_capture(mmwave_capture)
-            print("mmWave capture initialized")
+            print("mmWave capture initialized (off-GIL C receiver)")
         except Exception as e:
-            print(f"Warning: Could not initialize mmWave capture: {e}")
+            print(f"[mmWave] C receiver unavailable ({e}); falling back to pure-Python receiver")
+            try:
+                from core.mmwave_capture import MmWaveCapture
+                mmwave_capture = MmWaveCapture()
+                mmwave_capture.start()
+                controller.set_mmwave_capture(mmwave_capture)
+                print("mmWave capture initialized (pure-Python)")
+            except Exception as e2:
+                print(f"Warning: Could not initialize mmWave capture: {e2}")
 
     # camera capture (unless no-camera)
     camera_capture = None
