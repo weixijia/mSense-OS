@@ -1,5 +1,5 @@
 diff --git a/fpga_udp/src/main.cpp b/fpga_udp/src/main.cpp
-index 05f770d..26b69a8 100644
+index 05f770d..b3ffe12 100644
 --- a/fpga_udp/src/main.cpp
 +++ b/fpga_udp/src/main.cpp
 @@ -2,6 +2,9 @@
@@ -12,7 +12,7 @@ index 05f770d..26b69a8 100644
  #include <future>
  #include <mutex>
  #include <cmath>
-@@ -305,30 +308,126 @@ py::array_t<uint8_t> udp_read_thread_get_frames(uint32_t frameNum, int bytesInFr
+@@ -305,30 +308,143 @@ py::array_t<uint8_t> udp_read_thread_get_frames(uint32_t frameNum, int bytesInFr
      uint64_t bytesCnt;
      int receivePacketLen=0,lastFrameTransferedBytes;
  
@@ -90,9 +90,22 @@ index 05f770d..26b69a8 100644
 +    std::vector<uint8_t> cur(frm_bytesInFrame);
 +    int64_t cur_idx = -1, cur_filled = 0;
 +    packet_t buffer;
++    // seqNum-continuity tracking: a frame is COMPLETE only if every byte was written by a
++    // contiguous, gap-free run of packets (no loss, no duplicate, no reorder). cur_gap taints the
++    // frame being assembled; taint_next conservatively taints the next frame too (a gap straddling
++    // a frame boundary affects both). This prevents a duplicate/reorder from making cur_filled reach
++    // bytesInFrame while a hole still holds STALE bytes from a prior frame (= fabrication).
++    uint32_t last_seq = 0; bool have_last = false;
++    bool cur_gap = false; int taint_next = 0;
 +    while (frm_continue) {
 +        int n = recvfrom(sockfd, (char*)&buffer, packetSize_d, 0, NULL, NULL);
-+        if (n <= 0) continue;                                       // timeout/err -> re-check frm_continue
++        if (n != packetSize_d) continue;                            // timeout / short / malformed -> skip (never copy partial/stale)
++        if (buffer.seqNum == 0) continue;                           // invalid (would underflow (seqNum-1)) -> skip
++        if (have_last && buffer.seqNum != last_seq + 1) {           // discontinuity: lost/dup/reordered packet
++            cur_gap = true;                                         // taint the frame currently being assembled
++            taint_next = 1;                                         // and conservatively the next one
++        }
++        last_seq = buffer.seqNum; have_last = true;
 +        uint64_t off = (uint64_t)(buffer.seqNum - 1) * (uint64_t)PL;
 +        int L = PL; uint8_t* p = buffer.payload;
 +        while (L > 0) {
@@ -101,7 +114,7 @@ index 05f770d..26b69a8 100644
 +            int take = (int)std::min((int64_t)L, frm_bytesInFrame - foff);
 +            if (fidx != cur_idx) {
 +                if (cur_idx >= 0) {                                  // finalize the frame we just left
-+                    if (cur_filled == frm_bytesInFrame) {           // COMPLETE -> enqueue real frame
++                    if (cur_filled == frm_bytesInFrame && !cur_gap) { // COMPLETE + gap-free -> enqueue real frame
 +                        std::unique_lock<std::mutex> lk(frm_mtx);
 +                        if (frm_count == frm_numSlots) {            // consumer too slow -> drop oldest (honest)
 +                            frm_rd = (frm_rd + 1) % frm_numSlots; frm_count--; frm_overflow_g++;
@@ -110,10 +123,14 @@ index 05f770d..26b69a8 100644
 +                        frm_wr = (frm_wr + 1) % frm_numSlots; frm_count++; frm_recv_g++;
 +                        lk.unlock(); frm_cv.notify_one();
 +                    } else {
-+                        frm_lost_g++;                                // incomplete -> drop, never synthesize
++                        frm_lost_g++;                                // incomplete/tainted -> drop, never synthesize
 +                    }
++                    if (fidx > cur_idx + 1)                          // whole frame(s) entirely skipped (lost)
++                        frm_lost_g += (uint64_t)(fidx - cur_idx - 1);
 +                }
 +                cur_idx = fidx; cur_filled = 0;
++                cur_gap = (taint_next > 0);                          // carry a straddling gap into the new frame
++                if (taint_next > 0) taint_next--;
 +            }
 +            memcpy(cur.data() + foff, p, take);
 +            cur_filled += take;
@@ -146,7 +163,7 @@ index 05f770d..26b69a8 100644
  PYBIND11_MODULE(fpga_udp, m) {
      m.doc() = R"pbdoc(
          FPGA UDP reader & mmwavelink API plugin
-@@ -438,6 +537,31 @@ PYBIND11_MODULE(fpga_udp, m) {
+@@ -438,6 +554,32 @@ PYBIND11_MODULE(fpga_udp, m) {
              delete udp_queue_g;
          }
      });
@@ -159,6 +176,7 @@ index 05f770d..26b69a8 100644
 +        return (int)frm_ring.size();
 +    });
 +    m.def("udp_frame_start", [](int sock_fd) {
++        if (frm_continue) return;                 // already running: don't overwrite a joinable thread (would abort)
 +        frm_continue = true;
 +        frm_thread = std::thread(_udp_frame_thread, sock_fd);
 +    });

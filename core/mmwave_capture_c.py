@@ -50,9 +50,33 @@ class MmWaveCaptureC:
         self._started = False
 
     def start(self):
+        if self._started:                                # idempotent: never spawn a 2nd C thread
+            return
         self._fpga.udp_frame_start(self.sock.fileno())   # C thread: recv + assemble frames (no GIL)
         self._started = True
         print("[mmWave-C] off-GIL C frame receiver started (fpga_udp udp_frame_*)")
+
+    def is_running(self) -> bool:
+        return self._started and self._running
+
+    def is_alive(self) -> bool:                          # parity with MmWaveCapture (threading.Thread)
+        return self.is_running()
+
+    def get_stats(self) -> dict:
+        try:
+            recv_c, lost_inc, dropped_ovf = self._fpga.udp_frame_stats()
+        except Exception:
+            recv_c = lost_inc = dropped_ovf = 0
+        return {"total_frames": int(recv_c),
+                "lost_frames": int(lost_inc) + int(dropped_ovf),
+                "incomplete_dropped": int(lost_inc),
+                "ring_overflow_dropped": int(dropped_ovf)}
+
+    def __del__(self):
+        try:
+            self.stop()
+        except Exception:
+            pass
 
     @property
     def total_frames(self) -> int:
