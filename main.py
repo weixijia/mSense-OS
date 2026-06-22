@@ -42,6 +42,11 @@ def parse_args():
                         help='Radar .cfg for --trigger (default: config MMWAVE_TRIGGER cfg_file)')
     parser.add_argument('--trigger-com', type=str, default=None,
                         help='Radar CLI UART port for --trigger (default: config, e.g. COM4)')
+    parser.add_argument('--no-trigger', action='store_true',
+                        help='RECEIVE-ONLY: never touch the radar (overrides --trigger and config '
+                             'enable). Use when the radar was already started by mmWave Studio and is '
+                             'streaming — main.py just receives the live UDP. Avoids resetting/killing '
+                             'an in-progress stream.')
     parser.add_argument('--recording-dir', type=str, default='./recordings',
                         help='Base directory for recordings (default: ./recordings)')
     parser.add_argument('--camera-device', type=int, default=None,
@@ -64,7 +69,10 @@ def main():
     import config as _cfg
     trig = dict(_cfg.MMWAVE_TRIGGER)
     triggered = False
-    if args.trigger or trig.get('enable'):
+    if args.no_trigger and (args.trigger or trig.get('enable')):
+        print("[trigger] --no-trigger set: skipping radar trigger (RECEIVE-ONLY; will not touch the "
+              "radar). Capturing whatever is already streaming to :4098.")
+    if (args.trigger or trig.get('enable')) and not args.no_trigger:
         from core import mmwave_trigger
         com = args.trigger_com or trig['com_port']
         baud = trig.get('baud', 921600)
