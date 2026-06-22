@@ -17,3 +17,19 @@ See `../UBUNTU_SPI_PORT_HANDOVER.md`.
   public, consider whether redistribution is permitted under your TI license, or keep them out-of-tree.
 - Loaded into **RAM** (2-part: radarss then masterss), not flashed — same as mmWave Studio. See the
   port plan §10-R1 for the RAM 2-part download flow to implement via `rlDeviceFileDownload`.
+
+---
+
+## `mmwave_Studio_cli_xwr18xx.bin` — flashable no-DSP "studio_cli" firmware (151,620 B)
+
+The **flashable** firmware for the *current* pure-Python path (UART CLI @ 921600, full **256×255** raw
+ADC — stock `mmw_demo` caps Doppler near 256×64). Flashed to the radar's **SFLASH** (persistent),
+unlike the rf_eval pair above (loaded to RAM over SPI).
+
+- **Purpose:** restore the pure-Python UART path after a flash erase. Flash via **UniFlash** (flashing
+  mode **SOP=101**) on Windows, or via the UART ROM bootloader on Linux
+  (`../reference/UART_BOOTLOADER_PROTOCOL.md`).
+- **SHA256:** `16401BA8B676C6D21392D9157F96ED10F28B646623606B6178E7F44DF5180F95`
+- **⚠️ NOTE for Ubuntu-CC:** the firmware you erased is **this studio_cli no-DSP bin**, *not*
+  `xwr18xx_mmw_demo`. Reflash THIS to get 256×255 back (mmw_demo would cap at 256×64). Source: TI
+  Radar Toolbox "mmWave Studio CLI" tool.
