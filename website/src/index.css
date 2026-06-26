@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+/* ===========================================================================
+   Pose Studio — Geist tokens (vercel.com/design.md), Linear-grade dark.
+   Principle: subtraction + order + honesty. Restraint is confidence.
+   - Cold near-black base (#08090a), never flat pure black.
+   - Color is functional: tech blue (#0070f3) only for emphasis/links/focus
+     and the product's own keypoints. Everything else is grayscale.
+   - Depth from light (1px top highlights), not heavy shadow.
+   =========================================================================== */
+:root {
+  --bg: #08090a;
+  --surface: #0e0f11;
+  --surface-2: #16181b;
+  --surface-3: #1d2024;
+
+  --fg: #ededed;
+  --fg-2: #9a9ba1;
+  --fg-3: #6b6c72;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --highlight: rgba(255, 255, 255, 0.06);
+
+  --accent: #0070f3;
+  --accent-hover: #3291ff;
+  --accent-soft: rgba(0, 112, 243, 0.14);
+  --accent-glow: rgba(0, 112, 243, 0.18);
+
+  --r-6: 6px;
+  --r-8: 8px;
+  --r-12: 12px;
+  --r-16: 16px;
+  --r-full: 9999px;
+
+  --maxw: 1120px;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-feature-settings: 'liga' 1, 'calt' 1;
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  letter-spacing: -0.014em;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 { font-weight: 600; line-height: 1.06; letter-spacing: -0.03em; text-wrap: balance; }
+p { text-wrap: pretty; }
+a { color: inherit; text-decoration: none; }
+::selection { background: var(--accent-soft); color: var(--fg); }
+
+.mono { font-family: 'Geist Mono', 'SF Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); border-radius: var(--r-6); }
+
+* { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.16) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border: 3px solid transparent; background-clip: padding-box; border-radius: 999px; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.24); background-clip: padding-box; }
+
+.container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+.pre { opacity: 0; transform: translateY(16px); }
+.reveal { opacity: 1; transform: none; transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important; animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important; scroll-behavior: auto !important;
+  }
+  .pre { opacity: 1; transform: none; }
+}
