@@ -141,6 +141,17 @@ class MmWaveWorker(QObject):
                 QThread.msleep(2)                    # yield (releases the GIL for the receiver)
                 continue
 
+            # Live display: when NOT recording, skip to the NEWEST available frame so a
+            # startup backlog (frames buffered by the receiver while the camera/model loaded)
+            # isn't replayed fast-forward, and a transient stall self-heals to real time.
+            # When recording, process every frame in order (lossless).
+            if not self._recording:
+                while True:
+                    nxt = self._capture.get_frame()
+                    if isinstance(nxt[0], str):
+                        break
+                    result = nxt
+
             data, mmw_ts, fnum, lost = result
             try:
                 rd, ra, _ = self._processor.process(data)
