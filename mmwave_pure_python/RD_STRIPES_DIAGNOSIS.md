@@ -1,5 +1,14 @@
 # RD「等距竖线」根因定位
 
+> ## ✅ 已解决 2026-06-22 — 当前可用流程见 `SETUP.md` 顶部横幅
+>
+> 竖线根因(纯 Python 用 studio_cli flash 固件,啁啾间相位相干性比 Studio 的 rf_eval 差约 10 倍)
+> 已通过**工作流绕过**解决,而非修好 Linux SPI 口:在 Windows mmWave Studio 里装入 rf_eval +
+> 无限 `StartFrame` → 不给雷达断电、把主机重启进 Ubuntu → `python main.py --no-camera --no-trigger`
+> 只收数据。实测 RD 干净无竖线;丢帧也已用 off-GIL C 接收器消除(`core/mmwave_capture_c.py`,
+> fpga_udp 补丁在 `mmwave_pure_python/patches/`,内核零丢包、不插值)。RD 朝向用
+> `config.MMWAVE_RD_FLIP_RANGE = True` 与训练数据字节级对齐。下文为根因定位的历史记录。
+
 > 对比对象
 > - **Studio 版(参考,无竖线)**:`C:\Users\Chuang Yu\Desktop\Vomee`(PyQt5 GUI)+ mmWave Studio 触发(SPI 把 `rf_eval` 固件装进 RAM);录制 `session_20260621_181053`
 > - **纯 Python 版(有竖线)**:`C:\Users\Chuang Yu\Documents\Vomee`(QML GUI)+ studio_cli flash 无 DSP 固件 + UART 触发;录制 `session_20260621_181732`、`session_20260621_194824`

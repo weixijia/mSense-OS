@@ -1,5 +1,17 @@
 # Current Solution — full reverse-engineering (mmWave Studio + Vomee)
 
+> ## ✅ STATUS 2026-06-22 — this IS the production workflow now
+>
+> The Studio-bring-up → autonomous-stream → host-reboot → Ubuntu-receive flow described below is the
+> validated path. Two refinements since this doc was written:
+> - **Step 3 ("kill the DCA1000/record process") is replaced by rebooting the host to Ubuntu** (without
+>   power-cycling the radar) and capturing with **`python main.py --no-camera --no-trigger`**. The
+>   `--no-trigger` flag makes capture receive-only so it never resets/kills the live stream.
+> - **Frame loss is solved** by an off-GIL C frame-assembling receiver (`core/mmwave_capture_c.py` +
+>   fpga_udp `udp_frame_*`, patch in `mmwave_pure_python/patches/`): 11.4 fps under recording load,
+>   kernel `RcvbufErrors=0`, complete gap-free frames only (no interpolation/zero-fill).
+> - **RD orientation:** `config.MMWAVE_RD_FLIP_RANGE = True` (byte-matches the model's training data).
+
 Source of truth: `F:\mmwave_cam2.11\lua\skeleton.lua` (+ `clothes_..._trigger.lua`,
 `mmw_start_cam.lua`) and the legacy python (`steaming.py`, `capture_single.py`,
 `fft.py`, `raw_decode.py`, `config.py`).

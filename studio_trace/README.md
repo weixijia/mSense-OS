@@ -1,5 +1,10 @@
 # studio_trace/ — mmWave Studio USB bring-up capture (for the SPI/rf_eval port)
 
+> **Note (2026-06-22):** the Linux SPI/rf_eval port this trace was captured for is now **parked** — the
+> live capture path is the Studio-bring-up → reboot → `python main.py --no-camera --no-trigger` bypass
+> (see `mmwave_pure_python/SETUP.md`). This trace remains a valid reference for how Studio drives the
+> xWR1843 over SPI, should the Linux port ever be revived.
+
 ## `studio_bringup_ftdi_xds.pcapng` (36 MB, committed)
 
 USBPcap capture of a **full, successful mmWave Studio rf_eval bring-up** on the xWR1843

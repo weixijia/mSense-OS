@@ -1,5 +1,32 @@
 # Vomee mmWave — Setup & Run Guide: macOS / Ubuntu (pure-Python 256×255, NO mmWave Studio)
 
+> ## ✅ STATUS 2026-06-22 — current working pipeline (READ THIS FIRST)
+>
+> The clean, validated capture path today is the **Studio-bring-up → reboot → receive-only bypass**,
+> NOT the pure-Python `--trigger` path documented below (that path is **parked**: the Linux SPI
+> bring-up hit a hardware wall and the device SFLASH was erased during that investigation).
+>
+> 1. **Windows / mmWave Studio:** run the `rf_eval` bring-up (`skeleton.lua`) + `StartFrame` with
+>    **numFrames = 0 (infinite)**. Radar (192.168.33.180) + DCA1000 then stream autonomously over UDP.
+> 2. **Reboot the host to Ubuntu — do NOT power-cycle the radar or DCA1000.** rf_eval lives in RAM and
+>    self-triggers, so the stream survives the host reboot.
+> 3. **Ubuntu:** `python main.py --no-camera --no-trigger` — **receive-only**, never touches the radar,
+>    so it won't kill the live stream (the `--trigger` path WOULD, via `reset_radar`). Produces clean,
+>    line-free, phase-coherent RD.
+>
+> **Frame loss = SOLVED** (ultragoal `frame-loss-zero`, 3/3): an off-GIL C frame-assembling receiver
+> (`core/mmwave_capture_c.py` + fpga_udp `udp_frame_*`; patch in `mmwave_pure_python/patches/`) drains
+> the kernel UDP buffer with the GIL released. **11.4 fps under recording load, kernel `RcvbufErrors=0`.**
+> Only complete, gap-free frames are kept — incomplete/duplicate/reordered frames are honestly dropped,
+> **never interpolated or zero-filled.** `main.py` prefers this backend and falls back to the pure-Python
+> receiver if fpga_udp lacks `udp_frame_*`.
+>
+> **RD orientation:** `config.MMWAVE_RD_FLIP_RANGE = True` — byte-matches the model's training data
+> (the original `mmwave_silent/fft.py`, which flips RD/RA `[::-1]`); verified to max-abs 1.2e-7.
+>
+> The §0–§9 below are kept as the pure-Python investigation record. The SOP labels in older notes were
+> later found **mislabeled** — distrust them; the bypass above does not depend on SOP at all.
+
 > **For a fresh Claude Code session on macOS (Apple Silicon) or Ubuntu.** Follow this
 > top-to-bottom to set up a conda env and run the full pure-Python mmWave capture
 > (256×255 raw ADC) + Vomee GUI. No mmWave Studio, no TI `.exe`. **macOS deltas are folded

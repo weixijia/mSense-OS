@@ -1,5 +1,10 @@
 # xWR1843 UART ROM Bootloader — Phase 1 of the rf_eval port (CONFIRMED)
 
+> **Note (2026-06-22):** the rf_eval Linux port is **parked** (the live path is the Studio→reboot→
+> `python main.py --no-camera --no-trigger` bypass — see `../SETUP.md`). Also, a later Studio USB trace
+> showed the xWR1843 bring-up is actually all-SPI (the "two-phase UART download" premise below was
+> wrong). Kept as a protocol reference for the UART ROM bootloader itself.
+
 This is the **firmware-download-over-UART** half of the two-phase rf_eval bring-up
 (see `../UBUNTU_SPI_PORT_HANDOVER.md` §CORRECTION). Replicates mmWave Studio's
 `DownloadBSSFw` / `DownloadMSSFw`. Validated empirically on this hardware (Ubuntu, 2026-06-21).

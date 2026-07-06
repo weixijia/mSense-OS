@@ -1,5 +1,13 @@
 # Candidate Repositories — scored evaluation
 
+> ## ✅ RESOLVED 2026-06-22 — none of these were needed for the live path (see `SETUP.md`)
+>
+> The pure-Python trigger evaluation below was for replacing mmWave Studio. The shipped workflow keeps
+> Studio for the one-time bring-up and captures on Ubuntu receive-only (`python main.py --no-camera
+> --no-trigger`). `gaoweifan/pyRadar` (#1) is still used — but only for its **fpga_udp DCA1000 UDP
+> receiver**, which we extended with an off-GIL C frame-assembler (patch in
+> `mmwave_pure_python/patches/`); its SPI/UART trigger code is not used. Kept as a historical record.
+
 Legend for **Covers**: `DCA` = DCA1000 UDP control, `RF` = IWR RF config without
 Studio, `UART` = CLI-UART cfg path, `SPI` = mmwavelink-over-SPI/FTDI, `RX` = raw
 ADC receive/parse only.

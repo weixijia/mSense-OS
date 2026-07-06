@@ -1,5 +1,16 @@
 # Vomee — Ubuntu SPI / rf_eval Firmware Port: Handover & Plan
 
+> ## ✅ RESOLVED 2026-06-22 — this SPI port is PARKED; read `SETUP.md` (top banner) for the live path
+>
+> The goal of this doc (Studio-quality phase-coherent data on Linux) was achieved by a **workflow
+> bypass, not by finishing the Linux SPI port**: bring up rf_eval in mmWave Studio (Windows) with an
+> infinite `StartFrame`, reboot the host to Ubuntu without power-cycling the radar, then capture
+> receive-only with `python main.py --no-camera --no-trigger`. Clean, line-free RD confirmed; frame
+> loss eliminated by an off-GIL C receiver (`core/mmwave_capture_c.py`, fpga_udp patch in
+> `mmwave_pure_python/patches/`). The Linux SPI bring-up hit a hardware wall (device replied `ffff`
+> despite byte-identical USB to Studio) and is not needed. **The SOP labels in §6/§10 were found
+> mislabeled** — distrust them. Everything below is a historical investigation record.
+
 > **Audience:** a fresh Claude Code session running on **Ubuntu** (same machine, after the OS switch),
 > in the Vomee repo. Read this top-to-bottom first. It captures the entire investigation done on
 > 2026-06-21 (on Windows) and the concrete plan to finish the work on Ubuntu.

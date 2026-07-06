@@ -1,5 +1,15 @@
 # Lab Notes — Pure-Python mmWave Triggering (no mmWave Studio)
 
+> ## ✅ RESOLVED 2026-06-22 — current path is the Studio→reboot→receive bypass (see `SETUP.md`)
+>
+> This log's original goal (drive everything from Python) was **superseded** by a simpler, validated
+> workflow: bring up rf_eval in mmWave Studio with an infinite `StartFrame`, reboot the host to Ubuntu
+> without power-cycling the radar, then capture receive-only with `python main.py --no-camera
+> --no-trigger`. Frame loss is solved by an off-GIL C receiver (`core/mmwave_capture_c.py`; fpga_udp
+> patch in `mmwave_pure_python/patches/`) — zero kernel packet loss, complete-frames-only (no
+> interpolation). The SOP-jumper notes below were later found **mislabeled** — distrust them. Kept as
+> a historical record.
+
 > Goal: replace the mmWave Studio + "kill DCA1000 process" workflow so that
 > **everything runs from Python** — configure the IWR1843, configure the
 > DCA1000, start chirping, and stream raw ADC into Vomee's `main.py`.
