@@ -8,11 +8,19 @@
 >
 > 1. **Windows / mmWave Studio:** run the `rf_eval` bring-up (`skeleton.lua`) + `StartFrame` with
 >    **numFrames = 0 (infinite)**. Radar (192.168.33.180) + DCA1000 then stream autonomously over UDP.
-> 2. **Reboot the host to Ubuntu — do NOT power-cycle the radar or DCA1000.** rf_eval lives in RAM and
->    self-triggers, so the stream survives the host reboot.
-> 3. **Ubuntu:** `python main.py --no-camera --no-trigger` — **receive-only**, never touches the radar,
->    so it won't kill the live stream (the `--trigger` path WOULD, via `reset_radar`). Produces clean,
+> 2. **Hand the stream to your capture host WITHOUT power-cycling the radar/DCA1000** — either reboot
+>    this machine to Ubuntu, or unplug the type-C hub (radar + DCA1000 + USB-Ethernet) and move it to
+>    another host (e.g. a MacBook). rf_eval lives in RAM and self-triggers, so the stream survives.
+> 3. **Capture host (Ubuntu or macOS):** just run **`python main.py`** — **receive-only + camera are
+>    now the DEFAULT**, so it never touches the radar and won't kill the live stream (only `--trigger`
+>    would, via `reset_radar`). Add `--no-camera` for a headless mmWave-only view. Produces clean,
 >    line-free, phase-coherent RD.
+>
+> **macOS (M-series) note:** the same `python main.py` works (mmWave FFT runs on CPU — plenty fast for
+> 256×255). Set static IP **`192.168.33.30/24`** on the moved USB-Ethernet dongle (System Settings ▸
+> Network ▸ Manual; the interface name will differ from Ubuntu's `enx…`). The off-GIL C receiver needs
+> `fpga_udp` built locally — without it, capture **auto-falls back to the pure-Python receiver** (fine
+> for live viewing; build `fpga_udp` for zero-loss recording). See §2.2–§2.4 for the macOS deltas.
 >
 > **Frame loss = SOLVED** (ultragoal `frame-loss-zero`, 3/3): an off-GIL C frame-assembling receiver
 > (`core/mmwave_capture_c.py` + fpga_udp `udp_frame_*`; patch in `mmwave_pure_python/patches/`) drains

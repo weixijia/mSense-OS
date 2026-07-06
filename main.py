@@ -37,16 +37,16 @@ def parse_args():
                         help='Run without camera (mmWave only)')
     parser.add_argument('--trigger', action='store_true',
                         help='Trigger the radar from Python (no mmWave Studio). '
-                             'Sends the .cfg over UART + configures DCA1000.')
+                             'Sends the .cfg over UART + configures DCA1000. '
+                             'OFF by default: plain `python main.py` is receive-only.')
     parser.add_argument('--trigger-cfg', type=str, default=None,
                         help='Radar .cfg for --trigger (default: config MMWAVE_TRIGGER cfg_file)')
     parser.add_argument('--trigger-com', type=str, default=None,
                         help='Radar CLI UART port for --trigger (default: config, e.g. COM4)')
     parser.add_argument('--no-trigger', action='store_true',
-                        help='RECEIVE-ONLY: never touch the radar (overrides --trigger and config '
-                             'enable). Use when the radar was already started by mmWave Studio and is '
-                             'streaming — main.py just receives the live UDP. Avoids resetting/killing '
-                             'an in-progress stream.')
+                        help='RECEIVE-ONLY (now the DEFAULT; kept for back-compat). Never touch the '
+                             'radar; force-overrides --trigger. Use when the radar was already started '
+                             'by mmWave Studio and is streaming — main.py just receives the live UDP.')
     parser.add_argument('--recording-dir', type=str, default='./recordings',
                         help='Base directory for recordings (default: ./recordings)')
     parser.add_argument('--camera-device', type=int, default=None,
@@ -69,10 +69,15 @@ def main():
     import config as _cfg
     trig = dict(_cfg.MMWAVE_TRIGGER)
     triggered = False
-    if args.no_trigger and (args.trigger or trig.get('enable')):
-        print("[trigger] --no-trigger set: skipping radar trigger (RECEIVE-ONLY; will not touch the "
-              "radar). Capturing whatever is already streaming to :4098.")
-    if (args.trigger or trig.get('enable')) and not args.no_trigger:
+    # RECEIVE-ONLY BY DEFAULT: plain `python main.py` never touches the radar, so it cannot reset/kill
+    # a stream already brought up by mmWave Studio. The radar is triggered from Python ONLY when
+    # --trigger is passed explicitly. (--no-trigger is kept for back-compat and still force-overrides
+    # --trigger; config MMWAVE_TRIGGER['enable'] no longer auto-triggers.)
+    do_trigger = args.trigger and not args.no_trigger
+    if not do_trigger:
+        print("[trigger] receive-only (default): not touching the radar; capturing whatever is already "
+              "streaming to :4098. Pass --trigger to start the radar from Python.")
+    if do_trigger:
         from core import mmwave_trigger
         com = args.trigger_com or trig['com_port']
         baud = trig.get('baud', 921600)

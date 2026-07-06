@@ -4,9 +4,10 @@
 >
 > The Studio-bring-up → autonomous-stream → host-reboot → Ubuntu-receive flow described below is the
 > validated path. Two refinements since this doc was written:
-> - **Step 3 ("kill the DCA1000/record process") is replaced by rebooting the host to Ubuntu** (without
->   power-cycling the radar) and capturing with **`python main.py --no-camera --no-trigger`**. The
->   `--no-trigger` flag makes capture receive-only so it never resets/kills the live stream.
+> - **Step 3 ("kill the DCA1000/record process") is replaced by handing the stream to your capture host
+>   without power-cycling the radar** (reboot to Ubuntu, or move the type-C hub to another host such as a
+>   MacBook) and capturing with just **`python main.py`** — receive-only + camera are now the default,
+>   so it never resets/kills the live stream (only `--trigger` would).
 > - **Frame loss is solved** by an off-GIL C frame-assembling receiver (`core/mmwave_capture_c.py` +
 >   fpga_udp `udp_frame_*`, patch in `mmwave_pure_python/patches/`): 11.4 fps under recording load,
 >   kernel `RcvbufErrors=0`, complete gap-free frames only (no interpolation/zero-fill).

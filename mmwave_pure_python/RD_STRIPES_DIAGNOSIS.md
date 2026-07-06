@@ -4,8 +4,8 @@
 >
 > 竖线根因(纯 Python 用 studio_cli flash 固件,啁啾间相位相干性比 Studio 的 rf_eval 差约 10 倍)
 > 已通过**工作流绕过**解决,而非修好 Linux SPI 口:在 Windows mmWave Studio 里装入 rf_eval +
-> 无限 `StartFrame` → 不给雷达断电、把主机重启进 Ubuntu → `python main.py --no-camera --no-trigger`
-> 只收数据。实测 RD 干净无竖线;丢帧也已用 off-GIL C 接收器消除(`core/mmwave_capture_c.py`,
+> 无限 `StartFrame` → 不给雷达断电、把数据流交给采集主机(重启进 Ubuntu,或把 type-C hub 搬到别的
+> 主机如 MacBook)→ 直接 `python main.py`(默认只收+相机)。实测 RD 干净无竖线;丢帧也已用 off-GIL C 接收器消除(`core/mmwave_capture_c.py`,
 > fpga_udp 补丁在 `mmwave_pure_python/patches/`,内核零丢包、不插值)。RD 朝向用
 > `config.MMWAVE_RD_FLIP_RANGE = True` 与训练数据字节级对齐。下文为根因定位的历史记录。
 
