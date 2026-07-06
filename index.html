@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>mSense OS — Multimodal sensing, perfectly in sync</title>
-  <meta name="description" content="mSense OS captures video, audio, mmWave radar, and skeletal motion in a single time-synchronized stream — GPU-accelerated, frame-accurate, research-ready." />
+  <title>mSense OS — Full-stack mmWave intelligence platform</title>
+  <meta name="description" content="mSense OS is a full-stack, self-controlled mmWave sensing platform: controllable hardware, synchronized raw multimodal data, and radar-native foundation models — from coarse detection to rich spatial and human intelligence." />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23003c33'/%3E%3Cpath d='M6 20c3-9 5-9 8 0s5 9 8 0' fill='none' stroke='%23edfce9' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,14 +13,11 @@
 </head>
 <body>
 
-  <!-- announcement -->
   <div class="announce">
     <span class="dot"></span>
-    <span>New — real-time Range-Doppler &amp; Range-Azimuth now GPU-accelerated on Apple Silicon.</span>
-    <a href="#performance">See the numbers →</a>
+    <span>Full-stack mmWave intelligence — from controllable hardware to radar-native foundation models.</span>
   </div>
 
-  <!-- nav -->
   <header class="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="#top">
@@ -28,273 +25,359 @@
         mSense&nbsp;OS
       </a>
       <nav class="nav-menu">
-        <a href="#modalities">Modalities</a>
-        <a href="#performance">Performance</a>
-        <a href="#pipeline">Pipeline</a>
-        <a href="#sync">Sync</a>
+        <a href="#hardware">Hardware</a>
+        <a href="#data">Data</a>
+        <a href="#model">Model</a>
+        <a href="#platform">Platform</a>
+        <a href="#why">Why us</a>
       </nav>
       <div class="nav-right">
-        <a class="btn-link" href="#pipeline">Docs</a>
-        <a class="btn-primary" href="#get-started">Get started</a>
+        <a class="btn-primary" href="#partner">Partner with us</a>
       </div>
     </div>
   </header>
 
   <main id="top">
 
-    <!-- hero -->
+    <!-- HERO -->
     <section class="hero">
       <div class="wrap">
-        <div class="hero-eyebrow">
-          <span class="chip">Multimodal capture OS</span>
-        </div>
-        <h1>Every modality.<br><span class="fade">One clock.</span></h1>
-        <p class="lead">mSense OS captures video, audio, mmWave radar, and skeletal motion in a single
-          time-synchronized stream — GPU-accelerated, frame-accurate, and ready for research.</p>
+        <span class="chip">Full-stack mmWave sensing platform</span>
+        <h1>The full stack behind<br><span class="fade">mmWave intelligence.</span></h1>
+        <p class="lead">mSense OS turns mmWave radar from coarse detection into rich spatial and human
+          intelligence — because we control the sensing hardware, the synchronized raw data, and the
+          radar-native models built on top of it.</p>
         <div class="hero-cta">
-          <a class="btn-primary" href="#get-started">Get started</a>
-          <a class="btn-link" href="#modalities">Explore the platform <span class="arrow">→</span></a>
+          <a class="btn-primary" href="#partner">Partner with us</a>
+          <a class="btn-link" href="#hardware">See the platform <span class="arrow">→</span></a>
         </div>
 
-        <!-- hero media: capture console + aside -->
-        <div class="hero-media">
-          <div class="console" aria-label="Live capture preview">
-            <div class="console-bar">
-              <span class="tl"></span><span class="tl"></span><span class="tl"></span>
-              <span class="title">mSense OS · live capture</span>
-            </div>
-            <div class="console-grid">
-              <div class="pane cam">
-                <span class="lbl">Camera · Skeleton</span>
-                <div class="cam-canvas"></div>
-                <svg class="skel" viewBox="0 0 200 240" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-                  <g fill="none" stroke="#34c759" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
-                    <circle cx="100" cy="52" r="13" fill="#34c759" fill-opacity="0.15"/>
-                    <path d="M100 65 L100 132 M100 82 L66 104 M100 82 L134 104 M100 132 L78 190 M100 132 L122 190 M66 104 L58 138 M134 104 L142 138"/>
-                    <circle cx="66" cy="104" r="3.5" fill="#34c759"/><circle cx="134" cy="104" r="3.5" fill="#34c759"/>
-                    <circle cx="58" cy="138" r="3.5" fill="#34c759"/><circle cx="142" cy="138" r="3.5" fill="#34c759"/>
-                    <circle cx="78" cy="190" r="3.5" fill="#34c759"/><circle cx="122" cy="190" r="3.5" fill="#34c759"/>
-                    <circle cx="100" cy="132" r="3.5" fill="#34c759"/>
-                  </g>
-                </svg>
-              </div>
-              <div class="pane-right">
-                <div class="pane"><span class="lbl">Range-Doppler</span><div class="rd"></div></div>
-                <div class="pane"><span class="lbl">Range-Azimuth</span><div class="ra"></div></div>
-              </div>
-            </div>
-            <div class="console-foot">
-              <span class="status-chip"><span class="live"></span> streaming</span>
-              <span class="status-chip">sync 12 ms</span>
-              <span class="status-chip">30.0 fps</span>
-              <span class="status-chip">mps · gpu</span>
-            </div>
-          </div>
-
-          <aside class="hero-aside">
-            <svg class="wave" viewBox="0 0 300 340" preserveAspectRatio="none" aria-hidden="true">
-              <g fill="none" stroke="#4fd1b0" stroke-width="1.4" stroke-opacity="0.5">
-                <path d="M-10 120 C60 60 120 180 190 120 S320 60 340 120"/>
-                <path d="M-10 170 C60 110 120 230 190 170 S320 110 340 170"/>
-                <path d="M-10 220 C60 160 120 280 190 220 S320 160 340 220"/>
-                <path d="M-10 270 C60 210 120 330 190 270 S320 210 340 270"/>
-              </g>
-            </svg>
-            <div class="aside-h">Signals you can<br>trust — down to<br>the millisecond.</div>
-            <div class="aside-p">Host-clock alignment across every sensor, with optional hardware-level sync for multi-radar rigs.</div>
-          </aside>
+        <!-- the stack, as a labelled strip (text, not imagery) -->
+        <div class="stack-strip" aria-label="Platform stack">
+          <div class="node"><div class="k">Layer 01</div><div class="v">Controllable hardware</div></div>
+          <div class="arw">→</div>
+          <div class="node"><div class="k">Layer 02</div><div class="v">Synchronized raw data</div></div>
+          <div class="arw">→</div>
+          <div class="node"><div class="k">Layer 03</div><div class="v">Foundation models</div></div>
+          <div class="arw">→</div>
+          <div class="node"><div class="k">Layer 04</div><div class="v">Applications</div></div>
         </div>
       </div>
     </section>
 
-    <!-- spec strip -->
+    <!-- SPEC STRIP -->
     <div class="spec">
       <div class="wrap">
-        <p class="spec-lead">Runs where your research runs</p>
+        <p class="spec-lead">One platform philosophy, across sensing domains</p>
         <div class="spec-row">
-          <span>Apple&nbsp;MPS</span><span class="sep">·</span>
-          <span>NVIDIA&nbsp;CUDA</span><span class="sep">·</span>
-          <span>CPU</span><span class="sep">·</span>
-          <span>TI&nbsp;mmWave radar</span><span class="sep">·</span>
-          <span>PySide6&nbsp;+&nbsp;Qt&nbsp;Quick</span>
+          <span>Human sensing</span><span class="sep">·</span>
+          <span>Rehabilitation</span><span class="sep">·</span>
+          <span>Autonomous driving</span><span class="sep">·</span>
+          <span>Drone detection</span><span class="sep">·</span>
+          <span>Industrial safety</span>
         </div>
       </div>
     </div>
 
-    <!-- modalities -->
-    <section class="band" id="modalities">
+    <!-- WHY HARDWARE CONTROL MATTERS -->
+    <section class="band" id="problem">
       <div class="wrap">
         <div class="section-head">
-          <span class="mono">Four modalities, one stream</span>
-          <h2>Capture the whole scene, not a slice of it.</h2>
-          <p>Each sensor runs on its own thread and lands on a shared timeline — so a frame of video,
-             a chirp of radar, and a skeletal pose all describe the same instant.</p>
+          <span class="mono">Why hardware control matters</span>
+          <h2>Most mmWave systems expose processed outputs, not the raw signals AI needs.</h2>
+          <p>Commercial radar today is built on OEM hardware and closed SDKs. Cost, data format, and
+             capability are set by the vendor — and teams are usually left with sparse point clouds or
+             coarse detection, which is why the market stalls at presence, occupancy, and fall detection.</p>
+        </div>
+        <div class="compare">
+          <div class="comp-card muted">
+            <div class="k">Off-the-shelf · point cloud</div>
+            <h3>A sensor you can't shape</h3>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg> Sparse, heavily processed output</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg> Micro-motion &amp; Doppler discarded</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg> Environment-sensitive, hard to learn from</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4l8 8M12 4l-8 8"/></svg> Limited to coarse detection tasks</li>
+            </ul>
+          </div>
+          <div class="comp-card hero-col">
+            <div class="k">mSense OS · raw RA / RD / RAD</div>
+            <h3>A system you design</h3>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Rich motion &amp; spatial information</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Preserves Doppler and range-angle structure</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Supports self-supervised learning</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Enables HAR, pose, captioning, scene understanding</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FULL-STACK HARDWARE CAPABILITY -->
+    <section class="band" id="hardware">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">Full-stack hardware capability</span>
+          <h2>We build the sensing stack, not just consume it.</h2>
         </div>
         <div class="cap-grid">
           <div class="cap">
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="5.5" width="14" height="13" rx="2"/><path d="M16.5 10l5-3v10l-5-3z"/></svg>
-            <h3>Video</h3>
-            <p>High-resolution camera capture at up to 1080p / 30 fps, streamed live with zero-copy display.</p>
-            <div class="tag">MP4 · per-frame RGB</div>
-          </div>
-          <div class="cap">
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg>
-            <h3>Audio</h3>
-            <p>Multi-channel audio recording, sample-aligned to the same host clock as every other stream.</p>
-            <div class="tag">WAV · multi-channel</div>
-          </div>
-          <div class="cap">
             <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="2.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
-            <h3>mmWave radar</h3>
-            <p>Raw ADC from TI AWR/IWR radar, processed on the GPU into live Range-Doppler and Range-Azimuth maps.</p>
-            <div class="tag">HDF5 · RD / RA</div>
+            <h3>Radar platform</h3>
+            <p>Custom mmWave radar integration across TI AWR/IWR-class devices and cascade configurations.</p>
           </div>
           <div class="cap">
-            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5V14M12 9l-4 2.5M12 9l4 2.5M12 14l-3 6M12 14l3 6"/></svg>
-            <h3>Skeleton</h3>
-            <p>RGB-extracted 2D skeletal keypoints per person, overlaid live and exported frame-by-frame.</p>
-            <div class="tag">JSON · x · y · confidence</div>
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h6M7 12h10M7 16h4"/></svg>
+            <h3>PCB &amp; capture</h3>
+            <p>In-house PCB, capture-card, and signal-acquisition design — direct access to the raw ADC stream.</p>
+          </div>
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+            <h3>Expandable sensors</h3>
+            <p>RGB, RGB-D, LiDAR, IMU, and RTK modules alongside mmWave — mixed to fit each deployment.</p>
+          </div>
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg>
+            <h3>Hardware-level sync</h3>
+            <p>Every sensor aligned to one clock, with optional microcontroller timing for multi-radar rigs.</p>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- performance dark band -->
-    <section class="band" id="performance">
-      <div class="wrap">
-        <div class="dark-band">
-          <div class="wrap" style="padding:0;max-width:none">
-            <span class="mono">Built for real time</span>
-            <h2>The heavy math runs on the GPU — and never on the UI thread.</h2>
-            <p>mSense OS moves radar signal processing onto the GPU and off the render loop, so the interface
-               stays fluid while every frame is computed honestly — no dropped-frame interpolation, ever.</p>
-            <div class="stat-grid">
-              <div class="stat">
-                <div class="num">5.5<small>×</small></div>
-                <div class="k">Faster radar FFT</div>
-                <div class="d">210 ms → 38 ms per frame on Apple Silicon (MPS), matched to CPU within ~2e-6.</div>
-              </div>
-              <div class="stat">
-                <div class="num">~30<small> fps</small></div>
-                <div class="k">UI that never blocks</div>
-                <div class="d">Signal processing runs on its own thread; the event loop stays responsive under full load.</div>
-              </div>
-              <div class="stat">
-                <div class="num">0<small> loss</small></div>
-                <div class="k">Honest capture</div>
-                <div class="d">An off-GIL receiver keeps up with the radar; only complete frames are kept, never fabricated.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- pipeline / product cards -->
-    <section class="band" id="pipeline">
+    <!-- DESIGN FOR THE USE CASE (the key slide) -->
+    <section class="band" id="usecase" style="padding-top:0">
       <div class="wrap">
         <div class="section-head">
-          <span class="mono">Capture · Process · Export</span>
-          <h2>A pipeline you can drop into your lab today.</h2>
+          <span class="mono">Design for the use case</span>
+          <h2>Because we control the stack, we design around each customer's real constraints.</h2>
+        </div>
+        <div class="cap-grid cols-2">
+          <div class="cap">
+            <span class="num-badge">01</span>
+            <h3>Signal fidelity</h3>
+            <p>Tasks differ. Pose and rehab need fine-grained motion, resolution, and sync; presence
+               detection does not. We tune raw-data access, RA/RD/RAD, frame rate, and synchronization to the job.</p>
+          </div>
+          <div class="cap">
+            <span class="num-badge">02</span>
+            <h3>Deployment environment</h3>
+            <p>Home, clinic, vehicle, outdoor, and lab differ in mounting, occlusion, space, and interference.
+               Control lets us tune radar placement, sensor mix, and calibration per scene.</p>
+          </div>
+          <div class="cap">
+            <span class="num-badge">03</span>
+            <h3>Cost &amp; form factor</h3>
+            <p>Not every customer needs LiDAR, RGB-D, or high-end cascade radar. We ship low-cost, research,
+               vehicle, and high-resolution kits — matched to the use case.</p>
+          </div>
+          <div class="cap">
+            <span class="num-badge">04</span>
+            <h3>Privacy &amp; data policy</h3>
+            <p>RGB and skeleton serve as development-time supervision. When the deployment must be camera-free,
+               the product ships mmWave-only — the same models, no camera.</p>
+          </div>
+        </div>
+        <p class="pullquote">Off-the-shelf hardware gives you a sensor. <em>Full-stack control lets us design a sensing system.</em></p>
+      </div>
+    </section>
+
+    <!-- WHAT HARDWARE CONTROL UNLOCKS: DATA ENGINE -->
+    <section class="band" id="data">
+      <div class="wrap">
+        <div class="dark-band">
+          <span class="mono">What hardware control unlocks</span>
+          <h2>The moat isn't the device. It's the synchronized raw-data engine behind it.</h2>
+          <p class="lead">Controlling capture lets us collect what no OEM output can reproduce: raw, time-aligned,
+             multimodal radar data — the fuel for radar-native foundation models.</p>
+          <div class="stat-grid">
+            <div class="stat"><div class="num">RA/RD</div><div class="k">Raw radar streams</div><div class="d">Range-azimuth, range-Doppler, and raw ADC — not point clouds.</div></div>
+            <div class="stat"><div class="num">4+</div><div class="k">Cross-modal supervision</div><div class="d">RGB, skeleton, and LiDAR aligned to the same clock as the radar.</div></div>
+            <div class="stat"><div class="num">80<small>+ hrs</small></div><div class="k">Proprietary data</div><div class="d">And growing — far beyond public mmWave datasets, hard to reproduce.</div></div>
+            <div class="stat"><div class="num">∞</div><div class="k">Special-scene capture</div><div class="d">New environments become new datasets, on demand.</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FROM RAW RADAR TO FOUNDATION MODEL -->
+    <section class="band" id="model">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">From raw radar to foundation model</span>
+          <h2>Our hardware gives us the data. Our data trains the model.</h2>
+          <p>A radar-native pipeline: self-supervised encoding of raw mmWave, then a radar-language model
+             that turns sensing streams into human-interpretable activity and scene descriptions.</p>
+        </div>
+        <div class="pipeline" aria-label="Pipeline from hardware to downstream tasks">
+          <div class="pl-node"><div class="k">Layer 01</div><div class="v">Hardware platform</div></div>
+          <div class="pl-arrow">→</div>
+          <div class="pl-node"><div class="k">Layer 02</div><div class="v">Synchronized raw multimodal data</div></div>
+          <div class="pl-arrow">→</div>
+          <div class="pl-node accent"><div class="k">Encoder</div><div class="v">DopplerMAE pre-training</div></div>
+          <div class="pl-arrow">→</div>
+          <div class="pl-node accent"><div class="k">Foundation model</div><div class="v">DopplerVLM</div></div>
+          <div class="pl-arrow">→</div>
+          <div class="pl-node"><div class="k">Output</div><div class="v">Downstream task adaptation</div></div>
+        </div>
+
+        <div class="cap-grid cols-2" style="margin-top:36px">
+          <div class="cap">
+            <h3>DopplerMAE encoder</h3>
+            <p>Pre-trained on raw mmWave RA/RD patterns to learn radar-native spatiotemporal motion features —
+               no reliance on hand-crafted point-cloud features. Reusable across HAR, pose, driving, and drone detection.</p>
+          </div>
+          <div class="cap">
+            <h3>DopplerVLM foundation model</h3>
+            <p>Built on the DopplerMAE encoder and trained across 80+ hours of radar data on 8×A100. An early
+               radar-language model that converts mmWave streams into activity and scene descriptions, captioning, and Q&amp;A.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DATA FLYWHEEL -->
+    <section class="band" id="flywheel" style="padding-top:0">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">Data flywheel</span>
+          <h2>As the platform spreads, the data and model moat compounds.</h2>
+        </div>
+        <div class="flywheel">
+          <div class="fw"><div class="v">More deployments</div><div class="d">Each platform in the field is a new capture point.</div></div>
+          <div class="fw"><div class="v">More synchronized data</div><div class="d">New scenes become new raw, aligned datasets.</div></div>
+          <div class="fw"><div class="v">Better DopplerVLM</div><div class="d">Diverse radar scenes make the model generalize.</div></div>
+          <div class="fw"><div class="v">More applications</div><div class="d">Stronger models unlock new downstream tasks.</div></div>
+          <div class="fw"><div class="v">More customers</div><div class="d">New use cases attract new partners and verticals.</div></div>
+          <div class="fw"><div class="v">More data</div><div class="d">Every customer expands the engine — the loop closes.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FIRST PRODUCT: OPEN FULL-STACK PLATFORM -->
+    <section class="band" id="platform">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">The platform</span>
+          <h2>An open, full-stack mmWave sensing platform teams can actually build on.</h2>
+          <p>Most teams that want to explore mmWave can't access raw data or build synchronized hardware.
+             mSense OS is the platform they're missing.</p>
         </div>
         <div class="prod-grid">
           <div class="prod">
-            <div class="k">01 · Capture</div>
-            <h3>Synchronized ingest</h3>
-            <p>Every sensor thread timestamps against one host clock, with an optional microcontroller for hardware-level sync.</p>
+            <div class="k">Hardware</div>
+            <h3>Base &amp; modules</h3>
+            <p>A radar base with expandable sensor modules, ready to configure per deployment.</p>
             <ul>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Per-frame timestamps</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Multi-radar, no interference</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Live preview on launch</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Radar base + sensor expansion</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Low-cost, research &amp; vehicle kits</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Hardware-level synchronization</li>
             </ul>
           </div>
           <div class="prod">
-            <div class="k">02 · Process</div>
-            <h3>Real-time on-device</h3>
-            <p>3D FFT to Range-Doppler and Range-Azimuth on the GPU; pose overlays computed in parallel on its own thread.</p>
+            <div class="k">Software</div>
+            <h3>SDK &amp; raw access</h3>
+            <p>Direct raw RA/RD access with synchronized multimodal capture and dataset tooling.</p>
             <ul>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> CUDA / MPS / CPU auto-select</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Viridis heatmaps, live</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Off-UI-thread by design</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Raw RA/RD stream access</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Synchronized multimodal capture</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Annotation &amp; dataset tools</li>
             </ul>
           </div>
           <div class="prod">
-            <div class="k">03 · Export</div>
-            <h3>Research-ready output</h3>
-            <p>Structured, timestamped artifacts per session — ready for training pipelines and analysis.</p>
+            <div class="k">Intelligence</div>
+            <h3>Models &amp; demos</h3>
+            <p>Foundation-model access and reference applications, with support and customization.</p>
             <ul>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Video MP4 · Audio WAV</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> mmWave HDF5 + metadata</li>
-              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Skeleton JSON, per person</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> DopplerMAE / DopplerVLM access</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Demo applications</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Support &amp; customization</li>
             </ul>
+          </div>
+        </div>
+        <div style="margin-top:36px">
+          <div class="mono" style="margin-bottom:14px">Built for</div>
+          <div class="chips">
+            <span>Universities</span><span>Research labs</span><span>Robotics labs</span>
+            <span>Healthcare AI groups</span><span>Sensing education</span><span>Corporate R&amp;D</span>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- sync split -->
-    <section class="band" id="sync">
+    <!-- WHY WE CAN WIN -->
+    <section class="band" id="why" style="padding-top:0">
       <div class="wrap">
-        <div class="split">
-          <div>
-            <span class="k">Temporal alignment</span>
-            <h2>When everything shares a clock, fusion becomes trivial.</h2>
-            <p>mSense OS anchors capture to a single master clock and logs the offset of every stream, so
-               downstream models see a coherent multimodal timeline instead of four drifting recordings.</p>
-            <div style="margin-top:26px"><a class="btn-primary" href="#get-started">Read the sync model</a></div>
+        <div class="section-head">
+          <span class="mono">Why we can win</span>
+          <h2>We control the three layers mmWave intelligence requires.</h2>
+        </div>
+        <div class="win">
+          <div class="win-col">
+            <div class="k">Hardware</div>
+            <h3>We build it</h3>
+            <p>PCB, capture, synchronization, and platform integration — direct control of the raw signal path.</p>
           </div>
-          <div class="timeline" aria-hidden="true">
-            <div class="trk">
-              <div class="lane"><span class="name">Video</span><div class="bar"></div></div>
-              <div class="lane"><span class="name">Audio</span><div class="bar"></div></div>
-              <div class="lane"><span class="name">mmWave</span><div class="bar"></div></div>
-              <div class="lane"><span class="name">Skeleton</span><div class="bar"></div></div>
-              <div class="lane"><span class="name" style="color:#003c33">t = master</span><div class="tick" style="height:20px"></div></div>
-            </div>
+          <div class="win-col">
+            <div class="k">Data</div>
+            <h3>We own it</h3>
+            <p>80+ hours of raw, synchronized, multimodal radar data — and growing with every deployment.</p>
+          </div>
+          <div class="win-col">
+            <div class="k">AI</div>
+            <h3>We train it</h3>
+            <p>The DopplerMAE + DopplerVLM foundation-model stack, built radar-native from the ground up.</p>
           </div>
         </div>
+        <p class="pullquote">This full-stack loop is <em>hard for pure hardware vendors, pure AI teams, or OEM-based developers to replicate.</em></p>
       </div>
     </section>
 
   </main>
 
-  <!-- footer / CTA -->
-  <footer class="footer" id="get-started">
+  <!-- FOOTER / PARTNER ASK -->
+  <footer class="footer" id="partner">
     <div class="wrap">
       <div class="footer-top">
         <div>
-          <div class="kicker">Sensing moves fast</div>
-          <h2>Bring every sensor into sync.</h2>
-          <div class="subscribe">
-            <input type="email" placeholder="you@lab.edu" aria-label="Email address" />
-            <button aria-label="Subscribe">→</button>
+          <div class="kicker">Let's build the platform</div>
+          <h2>Turn prototypes into the mmWave intelligence layer.</h2>
+          <ul class="ask">
+            <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Validate the first commercial platform users</li>
+            <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Find early design partners in research, rehab, and sensing R&amp;D</li>
+            <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Support pilot hardware production</li>
+            <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Connect with institutions that need raw mmWave capability</li>
+          </ul>
+          <div class="cta-row">
+            <a class="btn-primary on-dark" href="mailto:hello@msense.os">Partner with us</a>
+            <a class="btn-link on-dark" href="#top">Back to top <span class="arrow">↑</span></a>
           </div>
-          <p class="foot-note">Product updates and release notes. No spam.</p>
         </div>
         <div class="footer-cols">
           <div class="col">
             <h4>Platform</h4>
-            <a href="#modalities">Modalities</a>
-            <a href="#performance">Performance</a>
-            <a href="#sync">Sync model</a>
+            <a href="#hardware">Hardware</a>
+            <a href="#data">Data engine</a>
+            <a href="#platform">Kits &amp; SDK</a>
           </div>
           <div class="col">
-            <h4>Build</h4>
-            <a href="#pipeline">Pipeline</a>
-            <a href="#get-started">Get started</a>
-            <a href="#pipeline">Export formats</a>
+            <h4>Intelligence</h4>
+            <a href="#model">DopplerMAE</a>
+            <a href="#model">DopplerVLM</a>
+            <a href="#flywheel">Data flywheel</a>
           </div>
           <div class="col">
-            <h4>More</h4>
-            <a href="#top">Overview</a>
-            <a href="#performance">Benchmarks</a>
-            <a href="#get-started">Contact</a>
+            <h4>Company</h4>
+            <a href="#why">Why us</a>
+            <a href="#partner">Partner</a>
+            <a href="#problem">The problem</a>
           </div>
         </div>
       </div>
       <div class="footer-bottom">
         <span>© <span id="yr">2026</span> mSense OS</span>
-        <span class="mono" style="color:#5a5a66">Multimodal sensing · in sync</span>
+        <span class="mono" style="color:#5a5a66">Hardware · Data · Models — the full stack for mmWave intelligence</span>
       </div>
     </div>
   </footer>
