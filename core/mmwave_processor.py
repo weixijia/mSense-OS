@@ -11,8 +11,9 @@ is unavailable. Core reshape/FFT/orientation logic preserved from fft.py (verifi
 to produce identical RA/RD: relative FFT error ~3e-8, normalized heatmap diff ~2e-7).
 """
 import os
-# Process-wide hint for the POSE pipeline's MPS path on Apple Silicon (lets unsupported
-# MPS ops fall back to CPU). This module's FFT does NOT use MPS (see _pick_device).
+# Process-wide hint for the MPS path on Apple Silicon (lets any op unsupported on MPS fall
+# back to CPU). Used by both the pose pipeline and this module's FFT (see _pick_device --
+# torch.fft runs on MPS as of torch 2.4).
 os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
 
 import sys
@@ -30,21 +31,39 @@ try:
     import torch as _torch
     torch = _torch
     TORCH_AVAILABLE = True
+    # Cap torch's intra-op CPU thread pool. The RD/RA FFT is GPU-bound (MPS/CUDA), but torch's
+    # default pool (= core count, 10+ on an M3 Max) SPIN-WAITS at every MPS sync point -- it burned
+    # ~8.5 cores (851% CPU) for a 10 fps FFT with NO latency benefit. Measured on M3 Max: 1 thread
+    # is actually the FASTEST (32.5 ms/frame vs 38 ms at 10 threads) at ~20% CPU flat-out. This is
+    # process-global; the pose pipeline also runs on MPS so it is not slowed by fewer CPU threads.
+    # Tunable via TORCH_NUM_THREADS (0/unset -> 1).
+    try:
+        _nt = int(os.environ.get('TORCH_NUM_THREADS', '1')) or 1
+        torch.set_num_threads(_nt)
+    except Exception:
+        pass
 except Exception as e:  # pragma: no cover
     print(f"[Processor] PyTorch unavailable ({e}); using NumPy (CPU)")
 
 
 def _pick_device():
-    # FFT device: CUDA if available, else CPU. MPS is intentionally NOT used here --
-    # torch.fft (_fft_c2c/_fft_r2c) is unimplemented on the Apple-Silicon MPS backend
-    # and complex tensors cannot transfer to MPS (pytorch #78044 / #116392), and the
-    # MPS->CPU fallback env var does not rescue FFT/complex ops. CPU torch.fft is
-    # correct and fast for a 256x255 frame; MPS still serves the pose pipeline elsewhere.
+    # FFT device: CUDA if available, else Apple-Silicon MPS if available, else CPU.
+    # NOTE: torch.fft (_fft_c2c/_fft_r2c) and complex tensors WERE unimplemented on the
+    # MPS backend in older PyTorch (pytorch #78044 / #116392) -- hence this used to force
+    # CPU. As of torch 2.4 they ARE supported: verified on an M3 Max that fftn / rfft /
+    # fftshift / complex64 all run on MPS and match the CPU result to ~2e-6, at ~5x the
+    # CPU throughput for a 255x256x256 frame (210ms CPU -> 38ms MPS). process() still
+    # auto-falls-back to CPU if any MPS op errors, so this stays safe on old torch too.
     if not TORCH_AVAILABLE:
         return None
     try:
         if torch.cuda.is_available():
             return 'cuda'
+    except Exception:
+        pass
+    try:
+        if torch.backends.mps.is_available():
+            return 'mps'
     except Exception:
         pass
     return 'cpu'

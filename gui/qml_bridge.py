@@ -1,13 +1,19 @@
 """
 QML bridge for Vomee (PySide6 + Qt Quick).
 
-Two objects connect the Python capture/processing layer to the QML UI:
+Objects that connect the Python capture/processing layer to the QML UI:
 
 - FrameView:    a QQuickPaintedItem that displays live RGB frames (camera, and
                 the two mmWave heatmaps). Frames arrive as QImage via a slot.
-- AppController: the "brain" — owns the 30 Hz update loop, pulls frames from the
-                capture threads, runs the mmWave processor, pushes QImages to the
-                FrameViews, drives recording, and exposes status to QML.
+- MmWaveWorker: runs the mmWave receive -> 3D-FFT -> colormap pipeline on its OWN
+                QThread, off the Qt GUI thread. The FFT is ~38 ms/frame on Apple MPS
+                (~210 ms on CPU); running it in the 30 Hz GUI timer callback froze the
+                event loop and stuttered the camera + both heatmaps together. Here only
+                finished, fully-detached QImages cross back to the GUI thread via queued
+                signals. Recording is anchored here to the mmWave (master) clock.
+- AppController: the GUI-thread "brain" — owns the ~30 Hz camera display loop, relays the
+                worker's heatmap QImages to the FrameViews, drives recording state, and
+                exposes status to QML.
 
 All of core/ , recording/ and core/pose/ stay Qt-free; this module is the only
 Qt boundary on the new GUI path.
@@ -16,7 +22,7 @@ Qt boundary on the new GUI path.
 import time
 import numpy as np
 
-from PySide6.QtCore import QObject, Signal, Slot, Property, QTimer, Qt, QRectF
+from PySide6.QtCore import QObject, Signal, Slot, Property, QTimer, QThread, Qt, QRectF
 from PySide6.QtGui import QImage, QColor
 from PySide6.QtQuick import QQuickPaintedItem
 
@@ -48,7 +54,10 @@ _VIRIDIS = _viridis_lut()
 
 
 def rgb_to_qimage(rgb: np.ndarray) -> QImage:
-    """Convert a contiguous HxWx3 uint8 RGB array to a detached QImage."""
+    """Convert a contiguous HxWx3 uint8 RGB array to a DETACHED QImage.
+
+    The trailing .copy() detaches the QImage from the numpy buffer -- required so the
+    image is safe to hand to another thread (the source frame buffer may be reused/freed)."""
     if not rgb.flags['C_CONTIGUOUS']:
         rgb = np.ascontiguousarray(rgb)
     h, w, ch = rgb.shape
@@ -56,7 +65,7 @@ def rgb_to_qimage(rgb: np.ndarray) -> QImage:
 
 
 def heatmap_to_qimage(data: np.ndarray) -> QImage:
-    """Apply the viridis colormap to a normalized [0,1] heatmap -> QImage."""
+    """Apply the viridis colormap to a normalized [0,1] heatmap -> DETACHED QImage."""
     data = np.clip(data.astype(np.float32), 0.0, 1.0)
     idx = (data * 255).astype(np.uint8)
     h, w = data.shape
@@ -93,8 +102,103 @@ class FrameView(QQuickPaintedItem):
         painter.drawImage(QRectF(x, y, target.width(), target.height()), target)
 
 
+class MmWaveWorker(QObject):
+    """mmWave receive -> FFT -> colormap (+ recording), OFF the GUI thread.
+
+    Lives on its own QThread (started via `run`). Pulls complete frames from the capture
+    backend, runs MmWaveProcessor.process() (FFT on MPS/CUDA/CPU), converts RD/RA to
+    QImages, and emits them via QUEUED signals so FrameView.setImage runs on the GUI
+    thread (QImage is an implicitly-shared metatype -> AutoConnection resolves to Queued).
+    The QImages are detached (see rgb_to_qimage) so they are safe to cross the boundary.
+
+    Recording is anchored HERE to the mmWave master clock: each completed mmWave frame
+    snapshots the latest camera frame atomically (get_frame_full) and logs both stamps.
+    """
+
+    rdReady = Signal(QImage)
+    raReady = Signal(QImage)
+    frameProcessed = Signal(float, int)   # (mmw_ts, frame_num) -> GUI counters/sync
+
+    def __init__(self, capture, processor):
+        super().__init__()
+        self._capture = capture
+        self._processor = processor
+        self._running = True
+
+        # Recording wiring, set from the GUI thread before enabling recording.
+        self._recording = False
+        self._recorder = None
+        self._file_writer = None
+        self._camera_capture = None
+        self._timestamp_logger = None
+
+    @Slot()
+    def run(self):
+        """Worker loop: pull -> process -> emit, until stop()."""
+        while self._running:
+            result = self._capture.get_frame()
+            if isinstance(result[0], str):           # 'wait new frame' sentinel
+                QThread.msleep(2)                    # yield (releases the GIL for the receiver)
+                continue
+
+            data, mmw_ts, fnum, lost = result
+            try:
+                rd, ra, _ = self._processor.process(data)
+            except Exception as e:
+                print(f"[mmWave] process error: {e}")
+                continue
+
+            # Emit finished heatmaps (queued -> painted on the GUI thread).
+            self.rdReady.emit(heatmap_to_qimage(rd))
+            self.raReady.emit(heatmap_to_qimage(ra))
+
+            if self._recording and self._recorder is not None and self._recorder.is_recording:
+                self._record(data, rd, ra, fnum, mmw_ts)
+
+            self.frameProcessed.emit(mmw_ts, fnum)
+
+    def _record(self, data, rd, ra, fnum, mmw_ts):
+        """Persist one mmWave frame + the atomically-snapshotted latest camera frame."""
+        fw, rec = self._file_writer, self._recorder
+        if fw is None or rec is None:
+            return
+
+        # Snapshot raw+overlay+ts+landmarks from the SAME camera capture under one lock,
+        # so the saved camera frame, its skeleton and its timestamp cannot skew apart.
+        cam_ts = 0.0
+        frame = None
+        landmarks = None
+        if self._camera_capture is not None:
+            _, overlay, cam_ts, landmarks = self._camera_capture.get_frame_full()
+            frame = overlay   # preserve prior behavior: recorded 'camera' = displayed frame
+
+        rec.increment_frame_count()
+        raw_path = rec.get_raw_path()
+        if raw_path:
+            fw.write_raw_mmwave(raw_path, data, fnum)
+        rd_path = rec.get_frame_path(fnum, 'rd')
+        if rd_path:
+            fw.write_rd_heatmap(rd_path, rd, fnum)
+        ra_path = rec.get_frame_path(fnum, 'ra')
+        if ra_path:
+            fw.write_ra_heatmap(ra_path, ra, fnum)
+        if frame is not None:
+            cam_path = rec.get_frame_path(fnum, 'camera')
+            if cam_path:
+                fw.write_camera_frame(cam_path, frame, fnum)
+        if landmarks:
+            skel_path = rec.get_frame_path(fnum, 'skeleton')
+            if skel_path:
+                fw.write_skeleton(skel_path, landmarks, fnum)
+        if self._timestamp_logger:
+            self._timestamp_logger.log(fnum, mmw_ts, cam_ts)
+
+    def stop(self):
+        self._running = False
+
+
 class AppController(QObject):
-    """Owns the live loop and exposes state/commands to QML."""
+    """Owns the GUI-thread camera display loop and exposes state/commands to QML."""
 
     # Frame channels (QImage to the three FrameViews)
     cameraFrameReady = Signal(QImage)
@@ -113,6 +217,11 @@ class AppController(QObject):
         self._file_writer = None
         self._timestamp_logger = None
 
+        # mmWave worker (created lazily in start_preview when capture+processor exist)
+        self._mmw_worker = None
+        self._mmw_thread = None
+        self._mmw_active = False
+
         # display state
         self._mode = "Preview"
         self._skeleton = True
@@ -127,6 +236,7 @@ class AppController(QObject):
         self._last_fps_time = time.time()
         self._fps_frame_count = 0
         self._record_start = None
+        self._last_cam_ts = 0.0
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_update)
@@ -143,8 +253,28 @@ class AppController(QObject):
         """Go live immediately (camera + heatmaps); recording stays off."""
         self._last_fps_time = time.time()
         self._fps_frame_count = 0
+        self._start_mmwave_worker()
         if not self._timer.isActive():
             self._timer.start()
+
+    def _start_mmwave_worker(self):
+        """Spin up the off-GUI-thread mmWave pipeline (idempotent)."""
+        if self._mmw_worker is not None:
+            return
+        if not (self._mmwave_capture and self._mmwave_processor):
+            return
+        self._mmw_thread = QThread()
+        self._mmw_worker = MmWaveWorker(self._mmwave_capture, self._mmwave_processor)
+        self._mmw_worker._recorder = self._recorder
+        self._mmw_worker._file_writer = self._file_writer
+        self._mmw_worker._camera_capture = self._camera_capture
+        self._mmw_worker.moveToThread(self._mmw_thread)
+        # Cross-thread (worker -> GUI): queued. Signal->signal relay keeps QML wiring intact.
+        self._mmw_worker.rdReady.connect(self.rdFrameReady)
+        self._mmw_worker.raReady.connect(self.raFrameReady)
+        self._mmw_worker.frameProcessed.connect(self._on_mmw_frame)
+        self._mmw_thread.started.connect(self._mmw_worker.run)
+        self._mmw_thread.start()
 
     # ── QML-exposed scalar properties ────────────────────────────
     @Property(str, notify=changed)
@@ -220,16 +350,25 @@ class AppController(QObject):
             self._recording = True
             self._record_start = time.time()
             self._frame_count = 0
+            # Hand recording state to the worker LAST, after the session + logger exist.
+            if self._mmw_worker is not None:
+                self._mmw_worker._timestamp_logger = self._timestamp_logger
+                self._mmw_worker._recording = True
             self.changed.emit()
         self.start_preview()
 
     @Slot()
     def stop(self):
         """Stop recording; live preview keeps running."""
+        # Tell the worker to stop recording FIRST so it stops touching the logger/recorder.
+        if self._mmw_worker is not None:
+            self._mmw_worker._recording = False
         if self._recorder and self._recorder.is_recording:
             if self._timestamp_logger:
                 self._timestamp_logger.close()
                 self._timestamp_logger = None
+                if self._mmw_worker is not None:
+                    self._mmw_worker._timestamp_logger = None
             info = self._recorder.stop_session()
             print(f"[Rec] Done: {info.get('frame_count', 0)} frames")
             if self._file_writer:
@@ -238,52 +377,27 @@ class AppController(QObject):
         self._record_start = None
         self.changed.emit()
 
-    # ── live loop (ported from MainWindow._on_update) ────────────
+    # ── GUI-thread camera display loop ───────────────────────────
     def _on_update(self):
-        cam_updated = mmw_updated = False
-        sync_ms = -1.0
-        cam_ts = 0
-        frame = None
-        landmarks = None
+        """30 Hz on the GUI thread: camera display + status only. The mmWave FFT runs in
+        MmWaveWorker on its own thread and arrives via rdFrameReady/raFrameReady."""
+        cam_updated = False
 
         if self._camera_capture:
             if self._skeleton:
-                frame, cam_ts, landmarks = self._camera_capture.get_frame_with_overlay()
+                frame, cam_ts, _ = self._camera_capture.get_frame_with_overlay()
             else:
-                frame, cam_ts, landmarks = self._camera_capture.get_frame()
+                frame, cam_ts, _ = self._camera_capture.get_frame()
             if frame is not None:
                 self.cameraFrameReady.emit(rgb_to_qimage(frame))
+                self._last_cam_ts = cam_ts
                 cam_updated = True
 
-        if self._mmwave_capture:
-            result = self._mmwave_capture.get_frame()
-            if not isinstance(result[0], str):
-                data, mmw_ts, fnum, lost = result
-                if cam_updated and cam_ts > 0 and mmw_ts > 0:
-                    sync_ms = abs(mmw_ts - cam_ts) * 1000
-                if self._mmwave_processor:
-                    try:
-                        rd, ra, _ = self._mmwave_processor.process(data)
-                        self.rdFrameReady.emit(heatmap_to_qimage(rd))
-                        self.raFrameReady.emit(heatmap_to_qimage(ra))
-                        mmw_updated = True
-                        if self._recorder and self._recorder.is_recording:
-                            self._record(data, rd, ra, fnum, mmw_ts,
-                                         cam_ts if cam_updated else 0, frame, landmarks)
-                    except Exception as e:
-                        print(f"[Err] {e}")
-
-        # sync indicator
-        if mmw_updated and cam_updated:
-            self._sync_text = self._sync_label(sync_ms)
-        elif cam_updated:
-            self._sync_text = "cam only"
-        elif mmw_updated:
-            self._sync_text = "mmwave only"
-
-        if cam_updated or mmw_updated:
+        if cam_updated:
             self._frame_count += 1
             self._fps_frame_count += 1
+            if not self._mmw_active:
+                self._sync_text = "cam only"
 
         now = time.time()
         if now - self._last_fps_time >= 1.0:
@@ -296,6 +410,16 @@ class AppController(QObject):
                 el = int(now - self._record_start)
                 self._elapsed = f"{el//3600:02d}:{(el%3600)//60:02d}:{el%60:02d}"
             self.changed.emit()
+
+    @Slot(float, int)
+    def _on_mmw_frame(self, mmw_ts: float, fnum: int):
+        """GUI-thread slot: a new mmWave frame was processed by the worker. Update the
+        sync indicator against the latest camera timestamp."""
+        self._mmw_active = True
+        if self._last_cam_ts > 0 and mmw_ts > 0:
+            self._sync_text = self._sync_label(abs(mmw_ts - self._last_cam_ts) * 1000)
+        else:
+            self._sync_text = "mmwave only"
 
     @staticmethod
     def _sync_label(ms: float) -> str:
@@ -314,29 +438,10 @@ class AppController(QObject):
             return f"{info.get('backend')} · {info.get('device')} · {info.get('inference_fps',0):.1f} ip/s"
         return f"{info.get('backend')}: {s}"
 
-    def _record(self, data, rd, ra, fnum, mmw_ts, cam_ts, frame, landmarks):
-        if not self._file_writer or not self._recorder:
-            return
-        self._recorder.increment_frame_count()
-        raw_path = self._recorder.get_raw_path()
-        if raw_path:
-            self._file_writer.write_raw_mmwave(raw_path, data, fnum)
-        rd_path = self._recorder.get_frame_path(fnum, 'rd')
-        if rd_path:
-            self._file_writer.write_rd_heatmap(rd_path, rd, fnum)
-        ra_path = self._recorder.get_frame_path(fnum, 'ra')
-        if ra_path:
-            self._file_writer.write_ra_heatmap(ra_path, ra, fnum)
-        if frame is not None:
-            cam_path = self._recorder.get_frame_path(fnum, 'camera')
-            if cam_path:
-                self._file_writer.write_camera_frame(cam_path, frame, fnum)
-        if landmarks:
-            skel_path = self._recorder.get_frame_path(fnum, 'skeleton')
-            if skel_path:
-                self._file_writer.write_skeleton(skel_path, landmarks, fnum)
-        if self._timestamp_logger:
-            self._timestamp_logger.log(fnum, mmw_ts, cam_ts)
-
     def shutdown(self):
         self._timer.stop()
+        if self._mmw_worker is not None:
+            self._mmw_worker.stop()
+        if self._mmw_thread is not None:
+            self._mmw_thread.quit()
+            self._mmw_thread.wait(2000)
