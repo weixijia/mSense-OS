@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mSense OS — Multimodal sensing, perfectly in sync</title>
+  <meta name="description" content="mSense OS captures video, audio, mmWave radar, and skeletal motion in a single time-synchronized stream — GPU-accelerated, frame-accurate, research-ready." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23003c33'/%3E%3Cpath d='M6 20c3-9 5-9 8 0s5 9 8 0' fill='none' stroke='%23edfce9' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- announcement -->
+  <div class="announce">
+    <span class="dot"></span>
+    <span>New — real-time Range-Doppler &amp; Range-Azimuth now GPU-accelerated on Apple Silicon.</span>
+    <a href="#performance">See the numbers →</a>
+  </div>
+
+  <!-- nav -->
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top">
+        <svg class="glyph" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#003c33"/><path d="M6 20c3-9 5-9 8 0s5 9 8 0" fill="none" stroke="#edfce9" stroke-width="2.4" stroke-linecap="round"/></svg>
+        mSense&nbsp;OS
+      </a>
+      <nav class="nav-menu">
+        <a href="#modalities">Modalities</a>
+        <a href="#performance">Performance</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#sync">Sync</a>
+      </nav>
+      <div class="nav-right">
+        <a class="btn-link" href="#pipeline">Docs</a>
+        <a class="btn-primary" href="#get-started">Get started</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- hero -->
+    <section class="hero">
+      <div class="wrap">
+        <div class="hero-eyebrow">
+          <span class="chip">Multimodal capture OS</span>
+        </div>
+        <h1>Every modality.<br><span class="fade">One clock.</span></h1>
+        <p class="lead">mSense OS captures video, audio, mmWave radar, and skeletal motion in a single
+          time-synchronized stream — GPU-accelerated, frame-accurate, and ready for research.</p>
+        <div class="hero-cta">
+          <a class="btn-primary" href="#get-started">Get started</a>
+          <a class="btn-link" href="#modalities">Explore the platform <span class="arrow">→</span></a>
+        </div>
+
+        <!-- hero media: capture console + aside -->
+        <div class="hero-media">
+          <div class="console" aria-label="Live capture preview">
+            <div class="console-bar">
+              <span class="tl"></span><span class="tl"></span><span class="tl"></span>
+              <span class="title">mSense OS · live capture</span>
+            </div>
+            <div class="console-grid">
+              <div class="pane cam">
+                <span class="lbl">Camera · Skeleton</span>
+                <div class="cam-canvas"></div>
+                <svg class="skel" viewBox="0 0 200 240" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                  <g fill="none" stroke="#34c759" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+                    <circle cx="100" cy="52" r="13" fill="#34c759" fill-opacity="0.15"/>
+                    <path d="M100 65 L100 132 M100 82 L66 104 M100 82 L134 104 M100 132 L78 190 M100 132 L122 190 M66 104 L58 138 M134 104 L142 138"/>
+                    <circle cx="66" cy="104" r="3.5" fill="#34c759"/><circle cx="134" cy="104" r="3.5" fill="#34c759"/>
+                    <circle cx="58" cy="138" r="3.5" fill="#34c759"/><circle cx="142" cy="138" r="3.5" fill="#34c759"/>
+                    <circle cx="78" cy="190" r="3.5" fill="#34c759"/><circle cx="122" cy="190" r="3.5" fill="#34c759"/>
+                    <circle cx="100" cy="132" r="3.5" fill="#34c759"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="pane-right">
+                <div class="pane"><span class="lbl">Range-Doppler</span><div class="rd"></div></div>
+                <div class="pane"><span class="lbl">Range-Azimuth</span><div class="ra"></div></div>
+              </div>
+            </div>
+            <div class="console-foot">
+              <span class="status-chip"><span class="live"></span> streaming</span>
+              <span class="status-chip">sync 12 ms</span>
+              <span class="status-chip">30.0 fps</span>
+              <span class="status-chip">mps · gpu</span>
+            </div>
+          </div>
+
+          <aside class="hero-aside">
+            <svg class="wave" viewBox="0 0 300 340" preserveAspectRatio="none" aria-hidden="true">
+              <g fill="none" stroke="#4fd1b0" stroke-width="1.4" stroke-opacity="0.5">
+                <path d="M-10 120 C60 60 120 180 190 120 S320 60 340 120"/>
+                <path d="M-10 170 C60 110 120 230 190 170 S320 110 340 170"/>
+                <path d="M-10 220 C60 160 120 280 190 220 S320 160 340 220"/>
+                <path d="M-10 270 C60 210 120 330 190 270 S320 210 340 270"/>
+              </g>
+            </svg>
+            <div class="aside-h">Signals you can<br>trust — down to<br>the millisecond.</div>
+            <div class="aside-p">Host-clock alignment across every sensor, with optional hardware-level sync for multi-radar rigs.</div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- spec strip -->
+    <div class="spec">
+      <div class="wrap">
+        <p class="spec-lead">Runs where your research runs</p>
+        <div class="spec-row">
+          <span>Apple&nbsp;MPS</span><span class="sep">·</span>
+          <span>NVIDIA&nbsp;CUDA</span><span class="sep">·</span>
+          <span>CPU</span><span class="sep">·</span>
+          <span>TI&nbsp;mmWave radar</span><span class="sep">·</span>
+          <span>PySide6&nbsp;+&nbsp;Qt&nbsp;Quick</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- modalities -->
+    <section class="band" id="modalities">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">Four modalities, one stream</span>
+          <h2>Capture the whole scene, not a slice of it.</h2>
+          <p>Each sensor runs on its own thread and lands on a shared timeline — so a frame of video,
+             a chirp of radar, and a skeletal pose all describe the same instant.</p>
+        </div>
+        <div class="cap-grid">
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="5.5" width="14" height="13" rx="2"/><path d="M16.5 10l5-3v10l-5-3z"/></svg>
+            <h3>Video</h3>
+            <p>High-resolution camera capture at up to 1080p / 30 fps, streamed live with zero-copy display.</p>
+            <div class="tag">MP4 · per-frame RGB</div>
+          </div>
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg>
+            <h3>Audio</h3>
+            <p>Multi-channel audio recording, sample-aligned to the same host clock as every other stream.</p>
+            <div class="tag">WAV · multi-channel</div>
+          </div>
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="2.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+            <h3>mmWave radar</h3>
+            <p>Raw ADC from TI AWR/IWR radar, processed on the GPU into live Range-Doppler and Range-Azimuth maps.</p>
+            <div class="tag">HDF5 · RD / RA</div>
+          </div>
+          <div class="cap">
+            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5V14M12 9l-4 2.5M12 9l4 2.5M12 14l-3 6M12 14l3 6"/></svg>
+            <h3>Skeleton</h3>
+            <p>RGB-extracted 2D skeletal keypoints per person, overlaid live and exported frame-by-frame.</p>
+            <div class="tag">JSON · x · y · confidence</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- performance dark band -->
+    <section class="band" id="performance">
+      <div class="wrap">
+        <div class="dark-band">
+          <div class="wrap" style="padding:0;max-width:none">
+            <span class="mono">Built for real time</span>
+            <h2>The heavy math runs on the GPU — and never on the UI thread.</h2>
+            <p>mSense OS moves radar signal processing onto the GPU and off the render loop, so the interface
+               stays fluid while every frame is computed honestly — no dropped-frame interpolation, ever.</p>
+            <div class="stat-grid">
+              <div class="stat">
+                <div class="num">5.5<small>×</small></div>
+                <div class="k">Faster radar FFT</div>
+                <div class="d">210 ms → 38 ms per frame on Apple Silicon (MPS), matched to CPU within ~2e-6.</div>
+              </div>
+              <div class="stat">
+                <div class="num">~30<small> fps</small></div>
+                <div class="k">UI that never blocks</div>
+                <div class="d">Signal processing runs on its own thread; the event loop stays responsive under full load.</div>
+              </div>
+              <div class="stat">
+                <div class="num">0<small> loss</small></div>
+                <div class="k">Honest capture</div>
+                <div class="d">An off-GIL receiver keeps up with the radar; only complete frames are kept, never fabricated.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- pipeline / product cards -->
+    <section class="band" id="pipeline">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="mono">Capture · Process · Export</span>
+          <h2>A pipeline you can drop into your lab today.</h2>
+        </div>
+        <div class="prod-grid">
+          <div class="prod">
+            <div class="k">01 · Capture</div>
+            <h3>Synchronized ingest</h3>
+            <p>Every sensor thread timestamps against one host clock, with an optional microcontroller for hardware-level sync.</p>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Per-frame timestamps</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Multi-radar, no interference</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Live preview on launch</li>
+            </ul>
+          </div>
+          <div class="prod">
+            <div class="k">02 · Process</div>
+            <h3>Real-time on-device</h3>
+            <p>3D FFT to Range-Doppler and Range-Azimuth on the GPU; pose overlays computed in parallel on its own thread.</p>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> CUDA / MPS / CPU auto-select</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Viridis heatmaps, live</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Off-UI-thread by design</li>
+            </ul>
+          </div>
+          <div class="prod">
+            <div class="k">03 · Export</div>
+            <h3>Research-ready output</h3>
+            <p>Structured, timestamped artifacts per session — ready for training pipelines and analysis.</p>
+            <ul>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Video MP4 · Audio WAV</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> mmWave HDF5 + metadata</li>
+              <li><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3.2 3L13 5"/></svg> Skeleton JSON, per person</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- sync split -->
+    <section class="band" id="sync">
+      <div class="wrap">
+        <div class="split">
+          <div>
+            <span class="k">Temporal alignment</span>
+            <h2>When everything shares a clock, fusion becomes trivial.</h2>
+            <p>mSense OS anchors capture to a single master clock and logs the offset of every stream, so
+               downstream models see a coherent multimodal timeline instead of four drifting recordings.</p>
+            <div style="margin-top:26px"><a class="btn-primary" href="#get-started">Read the sync model</a></div>
+          </div>
+          <div class="timeline" aria-hidden="true">
+            <div class="trk">
+              <div class="lane"><span class="name">Video</span><div class="bar"></div></div>
+              <div class="lane"><span class="name">Audio</span><div class="bar"></div></div>
+              <div class="lane"><span class="name">mmWave</span><div class="bar"></div></div>
+              <div class="lane"><span class="name">Skeleton</span><div class="bar"></div></div>
+              <div class="lane"><span class="name" style="color:#003c33">t = master</span><div class="tick" style="height:20px"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- footer / CTA -->
+  <footer class="footer" id="get-started">
+    <div class="wrap">
+      <div class="footer-top">
+        <div>
+          <div class="kicker">Sensing moves fast</div>
+          <h2>Bring every sensor into sync.</h2>
+          <div class="subscribe">
+            <input type="email" placeholder="you@lab.edu" aria-label="Email address" />
+            <button aria-label="Subscribe">→</button>
+          </div>
+          <p class="foot-note">Product updates and release notes. No spam.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="col">
+            <h4>Platform</h4>
+            <a href="#modalities">Modalities</a>
+            <a href="#performance">Performance</a>
+            <a href="#sync">Sync model</a>
+          </div>
+          <div class="col">
+            <h4>Build</h4>
+            <a href="#pipeline">Pipeline</a>
+            <a href="#get-started">Get started</a>
+            <a href="#pipeline">Export formats</a>
+          </div>
+          <div class="col">
+            <h4>More</h4>
+            <a href="#top">Overview</a>
+            <a href="#performance">Benchmarks</a>
+            <a href="#get-started">Contact</a>
+          </div>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© <span id="yr">2026</span> mSense OS</span>
+        <span class="mono" style="color:#5a5a66">Multimodal sensing · in sync</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
+</body>
+</html>
