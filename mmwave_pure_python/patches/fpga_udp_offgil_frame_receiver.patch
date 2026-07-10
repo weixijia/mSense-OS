@@ -1,0 +1,201 @@
+diff --git a/fpga_udp/src/main.cpp b/fpga_udp/src/main.cpp
+index 05f770d..7ea14c9 100644
+--- a/fpga_udp/src/main.cpp
++++ b/fpga_udp/src/main.cpp
+@@ -2,6 +2,9 @@
+ #include <pybind11/numpy.h>
+ #include <iostream>
+ #include <thread>
++#include <condition_variable>
++#include <vector>
++#include <cstring>
+ #include <future>
+ #include <mutex>
+ #include <cmath>
+@@ -305,30 +308,146 @@ py::array_t<uint8_t> udp_read_thread_get_frames(uint32_t frameNum, int bytesInFr
+     uint64_t bytesCnt;
+     int receivePacketLen=0,lastFrameTransferedBytes;
+ 
++    {
++    /* Vomee: release the GIL while blocking on the kfifo (Get_wait). Otherwise this pull holds
++       the GIL for up to timeout_s, starving the Python consumer/recorder threads (only ~6 fps
++       got through). The C drain thread fills the kfifo off-GIL; here we only wait + memcpy into
++       a C buffer, so the GIL is not needed until we return the numpy array. */
++    py::gil_scoped_release nogil;
++
+     // Wait for start of next frame
++    bool timedout=false;
+     do{
+         ret = udp_queue_g->Get_wait(buf_ptr, 1, timeout_s*1000);
+         if (ret < 1){
+             printf("[fpga_udp]udp time out\n");
+             lastFrameRemainBytes=-1;
+-            return result;
++            timedout=true;
++            break;            // do NOT return a py:: object while GIL is released
+         }
+         bytesCnt = (buf_ptr->seqNum-1)*(packetSize_d-10);
+         lastFrameTransferedBytes = bytesCnt % bytesInFrame;
+         lastFrameRemainBytes = (bytesInFrame-lastFrameTransferedBytes) % bytesInFrame;
+     }while(lastFrameRemainBytes>=packetSize_d-10);
+-    
+-    expectedPacketNum_g = ceil((lastFrameRemainBytes + frameNum*bytesInFrame)/((double)(packetSize_d-10)));
+ 
+-    // Read in the rest of the frame
+-    ret = udp_queue_g->Get_wait(buf_ptr+1, expectedPacketNum_g-1, timeout_s*1000);
+-    if (ret < expectedPacketNum_g-1)
+-        printf("[fpga_udp]udp time out\n");
++    if(!timedout){
++        expectedPacketNum_g = ceil((lastFrameRemainBytes + frameNum*bytesInFrame)/((double)(packetSize_d-10)));
++        // Read in the rest of the frame
++        ret = udp_queue_g->Get_wait(buf_ptr+1, expectedPacketNum_g-1, timeout_s*1000);
++        if (ret < expectedPacketNum_g-1)
++            printf("[fpga_udp]udp time out\n");
++    }
++    }  // re-acquire GIL before touching py:: objects below
++
++    if(lastFrameRemainBytes==-1)   // timed out waiting for a frame
++        return result;
+ 
+     if(sort) return postProc_packet_sort(result,frameNum,bytesInFrame,packetSize_d,lastFrameRemainBytes,receivedPacketNum_g,firstPacketNum_g,lastPacketNum_g);
+     return result;
+ }
+ 
++// ---------- Vomee: off-GIL FRAME-assembling UDP receiver ----------
++// The drain thread assembles COMPLETE frames in C (GIL released) into a small ring; Python pulls
++// a ready frame with a single memcpy. This removes the per-frame dequeue+alloc+sort cost of
++// udp_read_thread_get_frames (which capped throughput ~5.6fps). Only complete frames are enqueued
++// (recv == bytesInFrame) — incomplete frames are counted (frm_lost_g) and dropped, NEVER
++// zero-filled/synthesized. Real raw bytes only.
++static int64_t      frm_bytesInFrame = 0;
++static int          frm_numSlots = 0;
++static std::vector<std::vector<uint8_t>> frm_ring;
++static int          frm_wr = 0, frm_rd = 0, frm_count = 0;
++static std::mutex   frm_mtx;
++static std::condition_variable frm_cv;
++static std::atomic<bool> frm_continue{false};
++static std::thread  frm_thread;
++static uint64_t     frm_lost_g = 0, frm_overflow_g = 0, frm_recv_g = 0;
++
++static void _udp_frame_thread(int sock_fd){
++    #ifdef __linux__
++        int sockfd = sock_fd;
++        struct timeval tv; tv.tv_sec = 1; tv.tv_usec = 0;          // 1s recv timeout so we can exit
++        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
++    #elif _WIN32
++        SOCKET sockfd = (SOCKET)sock_fd;
++        DWORD to = 1000; setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&to, sizeof(to));
++    #endif
++    const int PL = packetSize_d - 10;
++    std::vector<uint8_t> cur(frm_bytesInFrame);
++    int64_t cur_idx = -1, cur_filled = 0;
++    packet_t buffer;
++    // seqNum-continuity tracking: a frame is COMPLETE only if every byte was written by a
++    // contiguous, gap-free run of packets (no loss, no duplicate, no reorder). cur_gap taints the
++    // frame being assembled; taint_next conservatively taints the next frame too (a gap straddling
++    // a frame boundary affects both). This prevents a duplicate/reorder from making cur_filled reach
++    // bytesInFrame while a hole still holds STALE bytes from a prior frame (= fabrication).
++    uint32_t last_seq = 0; bool have_last = false;
++    bool cur_gap = false; int taint_next = 0;
++    while (frm_continue) {
++        int n = recvfrom(sockfd, (char*)&buffer, packetSize_d, 0, NULL, NULL);
++        if (n != packetSize_d) continue;                            // timeout / short / malformed -> skip (never copy partial/stale)
++        if (buffer.seqNum == 0) continue;                           // invalid (would underflow (seqNum-1)) -> skip
++        if (have_last && buffer.seqNum != last_seq + 1) {           // discontinuity: lost/dup/reordered packet
++            cur_gap = true;                                         // taint the frame currently being assembled
++            taint_next = 1;                                         // and conservatively the next one
++        }
++        last_seq = buffer.seqNum; have_last = true;
++        uint64_t off = (uint64_t)(buffer.seqNum - 1) * (uint64_t)PL;
++        int L = PL; uint8_t* p = buffer.payload;
++        while (L > 0) {
++            int64_t fidx = (int64_t)(off / (uint64_t)frm_bytesInFrame);
++            int64_t foff = (int64_t)(off % (uint64_t)frm_bytesInFrame);
++            int take = (int)std::min((int64_t)L, frm_bytesInFrame - foff);
++            if (fidx != cur_idx) {
++                if (cur_idx >= 0) {                                  // finalize the frame we just left
++                    if (cur_filled == frm_bytesInFrame && !cur_gap) { // COMPLETE + gap-free -> enqueue real frame
++                        std::unique_lock<std::mutex> lk(frm_mtx);
++                        if (frm_count == frm_numSlots) {            // consumer too slow -> drop oldest (honest)
++                            frm_rd = (frm_rd + 1) % frm_numSlots; frm_count--; frm_overflow_g++;
++                        }
++                        memcpy(frm_ring[frm_wr].data(), cur.data(), frm_bytesInFrame);
++                        frm_wr = (frm_wr + 1) % frm_numSlots; frm_count++; frm_recv_g++;
++                        lk.unlock(); frm_cv.notify_one();
++                    } else {
++                        frm_lost_g++;                                // incomplete/tainted -> drop, never synthesize
++                    }
++                    if (fidx > cur_idx + 1)                          // whole frame(s) entirely skipped (lost)
++                        frm_lost_g += (uint64_t)(fidx - cur_idx - 1);
++                }
++                cur_idx = fidx; cur_filled = 0;
++                cur_gap = (taint_next > 0);                          // carry a straddling gap into the new frame
++            }
++            memcpy(cur.data() + foff, p, take);
++            cur_filled += take;
++            off += take; p += take; L -= take;
++        }
++        // taint expires after ONE packet: only a gap that straddles into a new frame (i.e. the
++        // frame advanced on this same packet) taints the next frame. An in-frame gap must not
++        // linger across later packets and spuriously drop a good downstream frame.
++        if (taint_next > 0) taint_next--;
++    }
++}
++
++// Returns one complete frame (bytesInFrame uint8) or an EMPTY array (size 0) on timeout.
++py::array_t<uint8_t> udp_frame_get(int timeout_ms){
++    auto result = py::array_t<uint8_t>(frm_bytesInFrame);
++    uint8_t* dst = (uint8_t*)result.request().ptr;
++    bool got = false;
++    {
++        py::gil_scoped_release nogil;                               // don't hold GIL while waiting
++        std::unique_lock<std::mutex> lk(frm_mtx);
++        if (frm_count == 0)
++            frm_cv.wait_for(lk, std::chrono::milliseconds(timeout_ms),
++                            []{ return frm_count > 0 || !frm_continue; });
++        if (frm_count > 0) {
++            memcpy(dst, frm_ring[frm_rd].data(), frm_bytesInFrame); // copy under lock (safe)
++            frm_rd = (frm_rd + 1) % frm_numSlots; frm_count--;
++            got = true;
++        }
++    }
++    if (!got) return py::array_t<uint8_t>(0);
++    return result;
++}
++
+ PYBIND11_MODULE(fpga_udp, m) {
+     m.doc() = R"pbdoc(
+         FPGA UDP reader & mmwavelink API plugin
+@@ -438,6 +557,32 @@ PYBIND11_MODULE(fpga_udp, m) {
+             delete udp_queue_g;
+         }
+     });
++    // Vomee: off-GIL FRAME-assembling receiver (10fps + zero loss; real frames only).
++    m.def("udp_frame_init", [](int bytesInFrame, int numSlots) {
++        frm_bytesInFrame = bytesInFrame; frm_numSlots = numSlots;
++        frm_ring.assign(numSlots, std::vector<uint8_t>(bytesInFrame));
++        frm_wr = frm_rd = frm_count = 0;
++        frm_lost_g = frm_overflow_g = frm_recv_g = 0;
++        return (int)frm_ring.size();
++    });
++    m.def("udp_frame_start", [](int sock_fd) {
++        if (frm_continue) return;                 // already running: don't overwrite a joinable thread (would abort)
++        frm_continue = true;
++        frm_thread = std::thread(_udp_frame_thread, sock_fd);
++    });
++    m.def("udp_frame_get", &udp_frame_get);
++    m.def("udp_frame_stop", []() {
++        if(frm_continue){
++            frm_continue = false;
++            frm_cv.notify_all();
++            if(frm_thread.joinable()) frm_thread.join();
++            frm_ring.clear();
++        }
++    });
++    // (recvComplete, lostIncomplete, droppedOverflow) frame counts.
++    m.def("udp_frame_stats", []() {
++        return py::make_tuple((uint64_t)frm_recv_g, (uint64_t)frm_lost_g, (uint64_t)frm_overflow_g);
++    });
+     m.def("kfifo_benchmark", [](uint32_t loopTime,uint32_t maxPacketNum) {
+         udp_queue_g = new UnlockQueue<packet_t>(maxPacketNum);
+         packet_t buffer;

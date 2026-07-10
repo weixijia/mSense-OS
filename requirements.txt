@@ -1,0 +1,31 @@
+# Vomee Multi-Modal Data Capture System Dependencies
+
+# Core
+numpy>=1.21.0
+opencv-python>=4.5.0
+Pillow
+
+# GUI (PySide6 + Qt Quick / QML)
+PySide6>=6.5.0
+
+# Pose estimation — ViTPose engine (default) + YOLOv8 detection/tracking
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+filterpy            # SORT tracker
+scipy
+scikit-image
+matplotlib
+ffmpeg-python       # used by the vendored ViTPose visualization utils
+
+# mmWave radar — pure-Python capture/trigger (no mmWave Studio)
+pyserial>=3.5       # radar CLI UART: Windows COMx / Linux /dev/ttyACM0 / macOS /dev/cu.usbmodem*
+
+# Notes:
+# - mmWave FFT (Range/Doppler/Azimuth) runs on PyTorch: CUDA on NVIDIA, CPU elsewhere
+#   (incl. Apple Silicon — torch.fft is NOT implemented on MPS), NumPy fallback if torch
+#   is absent. CuPy is NO LONGER required (it was NVIDIA-only); torch replaced it for
+#   full macOS/Ubuntu/Windows support. CuPy remains an optional NVIDIA-only fast path.
+# - ViTPose runs on CUDA > MPS (Apple) > CPU automatically.
+# - The smallest model (vitpose-s) ships in ./models or auto-downloads on first run.
+# - ffmpeg-python needs the ffmpeg binary: macOS `brew install ffmpeg`, Ubuntu `apt install ffmpeg`.

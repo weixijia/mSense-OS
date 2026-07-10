@@ -1,0 +1,108 @@
+# RD「等距竖线」根因定位
+
+> ## ⚠️ 竖线有两个完全不同的原因 —— 先分清楚
+>
+> 1. **显示层 shear（2026-07-11 发现并修复）** —— RD 竖线**最常见**的原因，与雷达数据无关。
+>    即使是干净的 Studio rf_eval 流，在 QML GUI 上也会出现。**只影响 RD，不影响 RA**。见下方
+>    「## ✅ 第二个原因」。**遇到竖线先怀疑这个。**
+> 2. **固件相位噪声（2026-06-22，下方历史记录）** —— 只在用纯 Python `--trigger`（studio_cli
+>    flash 固件）时出现，是**数据层**真实缺陷，显示修复救不了。用 Studio rf_eval + 只收的工作流绕过。
+>
+> 判据：显示 shear 只在 RD、不在 RA，且换用 32 位对齐图像后消失；固件噪声在数值静止帧分析里
+> skirt/DC 比 ~10×，RA/RD 都受影响，且 Desktop PyQt5 可视化也能看到。
+
+---
+
+## ✅ 第二个原因：显示层「奇数宽度 RGB888」shear（2026-07-11 发现并修复）
+
+**症状**：QML GUI 里 RD 满屏等距竖线、RA 干净、拖窗口竖线不动。commit `383620c` 修复。
+
+**根因**：RD 是 **255 宽**（255 个多普勒 bin），转 RGB888 后每行 `255×3 = 765` 字节，**不是 4 的倍数**。
+Qt Quick 场景图上传 GPU 纹理时默认按 4 字节行对齐（`GL_UNPACK_ALIGNMENT=4`），于是逐行滑移 3 字节
+→ 累积 shear → 视觉上等距竖线，且烙在像素上（拖窗口不变）。RA 宽 256（`768`，4 的倍数）所以干净；
+相机 1280 宽也对齐。**宽度奇偶性精确区分三者 = 铁证。**
+
+**为什么之前难定位 / Desktop 一直干净**：
+- 原始字节、参考 FFT、真实 torch/CUDA 处理器、cv2 放大、`QImage.scaled`(raster) —— 6 个环节数值全干净
+  (comb strength 0.012)。竖线**只在 GPU 纹理上传那一步**产生，纯数据/raster 分析都复现不出来。
+- Desktop 版（PyQt5 + QLabel）用 `QPixmap.fromImage()`，会自动重排成 32 位对齐，天然绕过。
+- 与任何采集/处理代码改动无关（切到旧 commit 也有），纯 QML 渲染 + 奇数宽 RGB888 的固有问题；
+  在不同 GPU/驱动/显示器缩放下 shear 明显程度不同，所以"以前看着干净"是错觉。
+
+**修复**（`gui/qml_bridge.py: heatmap_to_qimage`）：热力图改输出 **4 通道 RGBA8888**（每行 `4×w`，
+恒为 4 的倍数，与宽度奇偶无关）。数据一字节没动，只加对齐的 alpha 通道。已实测 RD 竖线消失。
+
+---
+
+> ## ✅ 已解决 2026-06-22 — 当前可用流程见 `SETUP.md` 顶部横幅
+>
+> 竖线根因(纯 Python 用 studio_cli flash 固件,啁啾间相位相干性比 Studio 的 rf_eval 差约 10 倍)
+> 已通过**工作流绕过**解决,而非修好 Linux SPI 口:在 Windows mmWave Studio 里装入 rf_eval +
+> 无限 `StartFrame` → 不给雷达断电、把数据流交给采集主机(重启进 Ubuntu,或把 type-C hub 搬到别的
+> 主机如 MacBook)→ 直接 `python main.py`(默认只收+相机)。实测 RD 干净无竖线;丢帧也已用 off-GIL C 接收器消除(`core/mmwave_capture_c.py`,
+> fpga_udp 补丁在 `mmwave_pure_python/patches/`,内核零丢包、不插值)。RD 朝向用
+> `config.MMWAVE_RD_FLIP_RANGE = True` 与训练数据字节级对齐。下文为根因定位的历史记录。
+
+> 对比对象
+> - **Studio 版(参考,无竖线)**:`C:\Users\Chuang Yu\Desktop\Vomee`(PyQt5 GUI)+ mmWave Studio 触发(SPI 把 `rf_eval` 固件装进 RAM);录制 `session_20260621_181053`
+> - **纯 Python 版(有竖线)**:`C:\Users\Chuang Yu\Documents\Vomee`(QML GUI)+ studio_cli flash 无 DSP 固件 + UART 触发;录制 `session_20260621_181732`、`session_20260621_194824`
+
+## 结论(已确认)
+
+**竖线来自纯 Python 的「采集/固件」环节,不是可视化。** 纯 Python 用的 studio_cli flash 固件,其**啁啾间相位相干性比 Studio 经 SPI 装入的 `rf_eval`(`xwr18xx_radarss.bin`+`xwr18xx_masterss.bin`)差约 10 倍**,把本应集中在零多普勒一根线上的静止杂波能量,周期性/宽带地散布到邻近多普勒 bin → 在 RD 上呈现为零多普勒线两侧的「等距竖线/裙边」。
+
+> ⚠️ 修正:本文件早期版本曾错误地结论为「显示渲染问题、数据干净」。那是基于**整段平均** + **线性尺度** + **相邻列相关性**的分析,漏掉了低幅度宽带相位噪声。用户用对照实验推翻了它,后续运动控制分析确认了真因。下文为更正后的结论。
+
+## 决定性证据
+
+### 1. 对照实验(用户做的,最硬)
+同一个**旧 PyQt5 可视化**(`Desktop\Vomee`):
+- 喂 **Studio 采集** → **无竖线**
+- 喂 **纯 Python 采集**(`trigger_only.py` 触发后接收)→ **有竖线**
+- 纯 Python 在 SOP=001 和 SOP=011 下都有竖线;Studio 一直无。
+
+→ 唯一变量是「谁来采集」。**可视化无辜,问题在采集链。**
+
+### 2. 运动控制的相位相干性测量(`scratchpad/static_compare.py`)
+两段录制拍的动作不同,整段平均会把「场景/运动」混进来。于是只取**静止帧**(用远多普勒能量筛掉有人移动的帧),再测近零多普勒「裙边/DC」比:
+
+| 采集 | 静止帧 近零多普勒 skirt/DC |
+|---|---|
+| Studio(rf_eval 固件) | **0.0002**(刀锋尖峰,±3–4 bin 落底) |
+| PurePy 194824(studio_cli) | **0.0017–0.0028**(裙边拖到 ±15–20 bin) |
+| PurePy 181732(studio_cli) | **0.0017–0.0021**(裙边形状与上者一致) |
+
+→ 纯 Python 静止帧把杂波能量散开 **≈10×**,且**两段录制完全一致** = 系统性、可复现。**排除丢包**(丢包是突发的,这个每帧都有)、**排除场景**(已做运动控制)、**排除配置**(cfg 已逐行核对一致,见下表)。这是**啁啾间相位不相干(相位噪声)**的典型特征。
+
+### 3. 形态(`scratchpad/comb_period.py`)
+是**宽带相位噪声裙边**,不是干净的等周期梳齿 → **没有"关掉第 N 个周期性进程"这种一行 cfg 便宜修法**。studio_cli 示例 cfg 里也无直接控制相位相干性的开关(`calibMonCfg` 是帧间校准,不碰帧内裙边)。
+
+## `skeleton.lua` → `.cfg` 逐行转换(配置层已确认一致,排除为竖线成因)
+
+cfg:`mmwave_pure_python/studio_cli/src/profiles/profile_vomee_256x255_cont.cfg`
+
+| skeleton.lua | .cfg | 等价 |
+|---|---|---|
+| `ChanNAdcConfig(1,0,1,1,1,1,1,2,1,0)` | `channelCfg 15 5 0` + `adcCfg 2 1` | ✅ TX0+TX2、4RX、16bit、复数 |
+| `ProfileConfig(...,65.998,0,256,4800,0,0,30)` | `profileCfg 0 77 20 6 60 0 0 65.998 0 256 4800 0 0 30` | ✅ 全一致 |
+| `ChirpConfig(0,...,1,0,0)` / `(1,...,0,0,1)` | `chirpCfg 0 0 0 0 0 0 0 1` / `chirpCfg 1 1 0 0 0 0 0 4` | ✅ TX0 / TX2 |
+| `FrameConfig(0,1,0,255,100,0,0,1)` | `frameCfg 0 1 255 0 100 1 0` | ✅ 255 loops、无限帧、100ms |
+| `LPModConfig(0,0)` | `lowPower 0 0` | ✅ |
+| `CaptureCardConfig_Mode/PacketDelay/EthInit` | `cf.json`(lvdsMode2、fmt3、delay5、IP/端口) | ✅ |
+
+**新构建/无 cfg 单行对应(已报告)**:`sensorStop`/`flushCfg`/`dfeDataOutputMode 1`(mmw_demo CLI 框架);`adcbufCfg -1 0 1 1 1` 与 `lvdsStreamCfg -1 0 1 0`(等价替换 lua 的 `DataPathConfig`/`LvdsClkConfig`/`LVDSLaneConfig`)。lua 的 `DownloadBSSFw`/`DownloadMSSFw`/`RfInit` 等是**机制**,纯 Python 用 flash 固件替代——**而这正是相位相干性差异的来源**。
+
+## 修复路径
+
+**真正的修法 = 复刻 Studio:用 SPI/FTDI 把同一套 `rf_eval` `radarss.bin`+`masterss.bin` 装进 RAM**,而非用 flash 的 studio_cli 固件。
+- 参考 `gaoweifan/pyRadar`:AWR mmwavelink-over-SPI(固件下载 + Profile/Chirp/Frame 配置 + StartFrame)。1843 当 2243 用。
+- 跨平台:`pyftdi`(Linux/Mac/Windows),符合最终上 Ubuntu 的目标。
+- 这是唯一能拿到与 Studio **相位级一致**数据的路。
+
+低成本预试(长线希望不大):往 cfg 加 `calibMonCfg 1 1` 等校准命令,重抓静止场景看裙边是否收窄。
+
+## 副作用问题(独立于竖线)
+- **丢包**:`[mmWave] Packet lost!` 频繁——采集线程被主线程(ViTPose+FFT+渲染)经 GIL 抢占。会丢帧伤质量,但**不是竖线成因**(已用静止帧一致性排除)。
+
+---
+*分析脚本:`scratchpad/` 下 `static_compare.py`(决定性)、`comb_period.py`、`doppler_comb.py`、`per_frame_skirt.py`、`hi_contrast.py` 等*
