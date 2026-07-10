@@ -16,6 +16,11 @@
 >    would, via `reset_radar`). Add `--no-camera` for a headless mmWave-only view. Produces clean,
 >    line-free, phase-coherent RD.
 >
+> **⚠️ 2026-07-11:** "line-free RD" also requires the display fix in commit `383620c` — the QML GUI
+> used to shear a 255-wide RGB888 RD into equidistant vertical stripes regardless of data quality
+> (see `mmwave_pure_python/RD_STRIPES_DIAGNOSIS.md` → "第二个原因"). Now fixed (heatmap emits 32-bit
+> RGBA). If you see RD stripes on an older checkout, that display bug — not the radar — is the cause.
+>
 > **macOS (M-series) note:** the same `python main.py` works (mmWave FFT runs on CPU — plenty fast for
 > 256×255). Set static IP **`192.168.33.30/24`** on the moved USB-Ethernet dongle (System Settings ▸
 > Network ▸ Manual; the interface name will differ from Ubuntu's `enx…`). The off-GIL C receiver needs
