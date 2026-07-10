@@ -29,6 +29,7 @@ from PySide6.QtQuick import QQuickPaintedItem
 import sys
 sys.path.append('..')
 from config import DISPLAY_PARAMS
+from recording.file_writer import FrameBundle
 
 
 # ── viridis colormap LUT (ported from the old heatmap widget) ────────
@@ -80,6 +81,12 @@ class FrameView(QQuickPaintedItem):
         super().__init__(parent)
         self._image = QImage()
         self.setFillColor(QColor("#0b0b0c"))
+        # Cache of the scaled image: paint() fires on ANY repaint (resize,
+        # expose, scene-graph update), not just on new frames — re-running a
+        # SmoothTransformation resample of a 1280x720 frame on the GUI thread
+        # every paint is a multi-ms tax that caps display FPS.
+        self._scaled = None
+        self._scaled_key = None
 
     @Slot(QImage)
     def setImage(self, image: QImage):
@@ -89,14 +96,21 @@ class FrameView(QQuickPaintedItem):
     @Slot()
     def clearImage(self):
         self._image = QImage()
+        self._scaled = None
+        self._scaled_key = None
         self.update()
 
     def paint(self, painter):
         if self._image.isNull():
             return
         bounds = self.boundingRect()
-        target = self._image.scaled(bounds.size().toSize(),
-                                    Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        size = bounds.size().toSize()
+        key = (self._image.cacheKey(), size.width(), size.height())
+        if self._scaled_key != key:
+            self._scaled = self._image.scaled(size, Qt.KeepAspectRatio,
+                                              Qt.SmoothTransformation)
+            self._scaled_key = key
+        target = self._scaled
         x = bounds.x() + (bounds.width() - target.width()) / 2.0
         y = bounds.y() + (bounds.height() - target.height()) / 2.0
         painter.drawImage(QRectF(x, y, target.width(), target.height()), target)
@@ -125,6 +139,11 @@ class MmWaveWorker(QObject):
         self._processor = processor
         self._running = True
 
+        # True while an iteration is in flight — used by wait_idle() so the
+        # stop flow can quiesce before finalizing the session (a bundle
+        # landing after the session close would otherwise be lost)
+        self._busy = False
+
         # Recording wiring, set from the GUI thread before enabling recording.
         self._recording = False
         self._recorder = None
@@ -152,57 +171,94 @@ class MmWaveWorker(QObject):
                         break
                     result = nxt
 
-            data, mmw_ts, fnum, lost = result
+            self._busy = True
             try:
-                rd, ra, _ = self._processor.process(data)
+                data, mmw_ts, fnum, lost = result
+                try:
+                    rd, ra, _ = self._processor.process(data, compute_da=False)
+                except Exception as e:
+                    print(f"[mmWave] process error: {e}")
+                    rd = ra = None
+
+                if rd is not None:
+                    # Emit finished heatmaps (queued -> painted on the GUI thread).
+                    self.rdReady.emit(heatmap_to_qimage(rd))
+                    self.raReady.emit(heatmap_to_qimage(ra))
+
+                # Raw recording must NOT depend on the FFT succeeding — the
+                # raw stream is the ground truth everything else derives from
+                if self._recording and self._recorder is not None and self._recorder.is_recording:
+                    self._record(data, rd, ra, fnum, mmw_ts, lost)
+
+                self.frameProcessed.emit(mmw_ts, fnum)
             except Exception as e:
-                print(f"[mmWave] process error: {e}")
-                continue
+                # The worker must NEVER die: an unhandled exception here
+                # (e.g. a stop-flow race) would silently freeze the RD/RA
+                # views for the rest of the app session
+                print(f"[mmWave] worker iteration error: {e}")
+            finally:
+                self._busy = False
 
-            # Emit finished heatmaps (queued -> painted on the GUI thread).
-            self.rdReady.emit(heatmap_to_qimage(rd))
-            self.raReady.emit(heatmap_to_qimage(ra))
-
-            if self._recording and self._recorder is not None and self._recorder.is_recording:
-                self._record(data, rd, ra, fnum, mmw_ts)
-
-            self.frameProcessed.emit(mmw_ts, fnum)
-
-    def _record(self, data, rd, ra, fnum, mmw_ts):
-        """Persist one mmWave frame + the atomically-snapshotted latest camera frame."""
+    def _record(self, data, rd, ra, fnum, mmw_ts, lost):
+        """Persist one mmWave frame + the atomically-snapshotted latest camera
+        frame as a single atomic FrameBundle (whole frame queued or whole
+        frame dropped — no per-modality holes)."""
         fw, rec = self._file_writer, self._recorder
         if fw is None or rec is None:
             return
 
+        raw_path = rec.get_raw_path()
+        if raw_path is None:
+            return   # session is closing concurrently
+
         # Snapshot raw+overlay+ts+landmarks from the SAME camera capture under one lock,
         # so the saved camera frame, its skeleton and its timestamp cannot skew apart.
+        # The CLEAN frame is recorded (skeleton stays in the landmarks JSON, never
+        # burned into pixels — the overlay is reproducible from clean + landmarks,
+        # the reverse is not).
         cam_ts = 0.0
         frame = None
         landmarks = None
         if self._camera_capture is not None:
-            _, overlay, cam_ts, landmarks = self._camera_capture.get_frame_full()
-            frame = overlay   # preserve prior behavior: recorded 'camera' = displayed frame
+            frame, _, cam_ts, landmarks = self._camera_capture.get_frame_full()
 
-        rec.increment_frame_count()
-        raw_path = rec.get_raw_path()
-        if raw_path:
-            fw.write_raw_mmwave(raw_path, data, fnum)
-        rd_path = rec.get_frame_path(fnum, 'rd')
-        if rd_path:
-            fw.write_rd_heatmap(rd_path, rd, fnum)
-        ra_path = rec.get_frame_path(fnum, 'ra')
-        if ra_path:
-            fw.write_ra_heatmap(ra_path, ra, fnum)
-        if frame is not None:
-            cam_path = rec.get_frame_path(fnum, 'camera')
-            if cam_path:
-                fw.write_camera_frame(cam_path, frame, fnum)
-        if landmarks:
-            skel_path = rec.get_frame_path(fnum, 'skeleton')
-            if skel_path:
-                fw.write_skeleton(skel_path, landmarks, fnum)
-        if self._timestamp_logger:
-            self._timestamp_logger.log(fnum, mmw_ts, cam_ts)
+        bundle = FrameBundle(
+            frame_num=fnum,
+            mmwave_ts=mmw_ts,
+            camera_ts=cam_ts,
+            lost_packet=bool(lost),
+            raw=data,
+            raw_path=raw_path,
+            rd=rd,
+            rd_path=rec.get_frame_path(fnum, 'rd'),
+            ra=ra,
+            ra_path=rec.get_frame_path(fnum, 'ra'),
+            camera_frame=frame,
+            camera_path=rec.get_frame_path(fnum, 'camera'),
+            skeleton=landmarks,
+            skeleton_path=rec.get_frame_path(fnum, 'skeleton'),
+        )
+
+        # Only count/log frames that actually made it into the write queue,
+        # so metadata.frame_count and timestamps.csv match the data on disk
+        if fw.submit_bundle(bundle):
+            rec.increment_frame_count()
+            logger = self._timestamp_logger
+            if logger:
+                logger.log(fnum, mmw_ts, cam_ts, bool(lost))
+
+    def wait_idle(self, timeout: float = 3.0) -> bool:
+        """
+        Wait until no worker iteration is in flight.
+
+        Called by the stop flow AFTER _recording=False: an in-flight _record
+        finishes submitting its bundle before the caller finalizes the
+        session, so no late bundle can land behind the session close.
+        """
+        deadline = time.monotonic() + timeout
+        while self._busy and time.monotonic() < deadline:
+            time.sleep(0.005)
+        return not self._busy
 
     def stop(self):
         self._running = False
@@ -347,12 +403,25 @@ class AppController(QObject):
         self._mode = mode
         self.changed.emit()
 
+    def _capture_info(self) -> dict:
+        """Describe the active mmWave backend for session metadata, so
+        recorded timestamps/frame numbers are interpretable offline (the C
+        and pure-Python backends have different semantics)."""
+        cap = self._mmwave_capture
+        if cap is None:
+            return {}
+        return {
+            "backend": type(cap).__name__,
+            "timestamp_semantics": getattr(cap, "timestamp_semantics", "assembly_time"),
+            "frame_num_semantics": getattr(cap, "frame_num_semantics", "radar_absolute_index"),
+        }
+
     @Slot()
     def start(self):
         """Start a recording session (only meaningful in Recording mode)."""
         if self._mode == "Recording" and self._recorder and not self._recording:
             skeleton = self._skeleton
-            path = self._recorder.start_session(skeleton)
+            path = self._recorder.start_session(skeleton, capture_info=self._capture_info())
             print(f"[Rec] {path}")
             if self._recorder.session_path:
                 from recording.recorder import TimestampLogger
@@ -361,6 +430,8 @@ class AppController(QObject):
             self._recording = True
             self._record_start = time.time()
             self._frame_count = 0
+            if self._file_writer:
+                self._file_writer.reset_stats()
             # Hand recording state to the worker LAST, after the session + logger exist.
             if self._mmw_worker is not None:
                 self._mmw_worker._timestamp_logger = self._timestamp_logger
@@ -371,19 +442,37 @@ class AppController(QObject):
     @Slot()
     def stop(self):
         """Stop recording; live preview keeps running."""
-        # Tell the worker to stop recording FIRST so it stops touching the logger/recorder.
+        # Tell the worker to stop recording FIRST, then QUIESCE: an iteration
+        # already past the _recording check must finish submitting its bundle
+        # before we close the logger / finalize the session, or its data
+        # files land without a CSV row (and a late raw write could follow
+        # the session close).
         if self._mmw_worker is not None:
             self._mmw_worker._recording = False
+            if not self._mmw_worker.wait_idle(timeout=3.0):
+                print("[Rec] WARNING: mmWave worker still busy at stop")
         if self._recorder and self._recorder.is_recording:
             if self._timestamp_logger:
                 self._timestamp_logger.close()
                 self._timestamp_logger = None
                 if self._mmw_worker is not None:
                     self._mmw_worker._timestamp_logger = None
+            # Close session files after all queued bundles (FIFO), then wait
+            # with a REAL timeout — the GUI thread can never freeze here
+            if self._file_writer:
+                if not self._file_writer.end_session():
+                    # Queue full: let it drain, then retry once
+                    self._file_writer.wait_completion(timeout=10.0)
+                    self._file_writer.end_session()
+                if not self._file_writer.wait_completion(timeout=10.0):
+                    print("[Rec] WARNING: disk writer did not drain in time — "
+                          "the session may be missing trailing frames")
+                stats = self._file_writer.get_stats()
+                if stats["writes_dropped"]:
+                    print(f"[Rec] WARNING: {stats['writes_dropped']} whole frames "
+                          f"dropped by the disk writer during this session")
             info = self._recorder.stop_session()
             print(f"[Rec] Done: {info.get('frame_count', 0)} frames")
-            if self._file_writer:
-                self._file_writer.wait_completion(timeout=5.0)
         self._recording = False
         self._record_start = None
         self.changed.emit()
