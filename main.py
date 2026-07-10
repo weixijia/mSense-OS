@@ -100,8 +100,8 @@ def main():
             traceback.print_exc()
 
     app = QGuiApplication(sys.argv)
-    app.setApplicationName("Vomee")
-    app.setOrganizationName("Vomee")
+    app.setApplicationName("mSense OS")
+    app.setOrganizationName("mSense OS")
 
     # ── controller + backend objects ────────────────────────────
     from core.mmwave_processor import MmWaveProcessor

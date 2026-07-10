@@ -8,7 +8,7 @@ ApplicationWindow {
     visible: true
     width: 1360
     height: 860
-    title: "Vomee"
+    title: "mSense OS"
     color: "#f5f5f7"
 
     // ── palette (macOS light) ────────────────────────────────────
@@ -72,7 +72,7 @@ ApplicationWindow {
                 spacing: 14
 
                 Rectangle { width: 10; height: 10; radius: 5; color: backend.recording ? win.danger : win.good }
-                Text { text: "Vomee"; color: win.textMain; font.pixelSize: 18; font.weight: Font.Bold }
+                Text { text: "mSense OS"; color: win.textMain; font.pixelSize: 18; font.weight: Font.Bold }
                 Text {
                     text: backend.statusText
                     color: backend.recording ? win.danger : win.textSub
