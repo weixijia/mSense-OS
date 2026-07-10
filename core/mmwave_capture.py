@@ -73,7 +73,7 @@ class MmWaveCapture(threading.Thread):
         self.latest_read_num = 0
         self.next_read_position = 0
         self.next_cap_position = 0
-        self.buffer_overwritten = True
+        self.buffer_overwritten = False
 
         # Initialize sockets
         self._init_sockets()
@@ -89,22 +89,19 @@ class MmWaveCapture(threading.Thread):
         self.lost_frames = 0
 
     def _init_sockets(self):
-        """Initialize UDP sockets for config and data."""
-        # Create destinations
-        self.cfg_dest = (self.radar_ip, self.config_port)
-        self.cfg_recv = (self.pc_ip, self.config_port)
+        """Initialize the UDP data socket.
+
+        NOTE: this class is receive-only. It deliberately does NOT bind the
+        config port (4096) — radar/DCA1000 configuration is mmwave_trigger's
+        job, and holding 4096 here would only risk conflicts with it.
+        """
         self.data_recv = (self.pc_ip, self.data_port)
 
-        # Create sockets
-        self.config_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
 
         # Bind data socket with large receive buffer
         self.data_socket.bind(self.data_recv)
         self.data_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2**27)
-
-        # Bind config socket
-        self.config_socket.bind(self.cfg_recv)
 
     def run(self):
         """Main thread entry point."""
@@ -151,6 +148,12 @@ class MmWaveCapture(threading.Thread):
                     return  # Socket closed, exit gracefully
                 raise
 
+            # Skip malformed/foreign datagrams (a runt or stray packet on the
+            # port would otherwise raise a broadcast ValueError in assembly
+            # and kill the capture thread for the whole session)
+            if packet_data.size != UINT16_IN_PACKET:
+                continue
+
             after_packet_count = (byte_count + BYTES_IN_PACKET) % BYTES_IN_FRAME
 
             # Found new frame start (frame boundary within this packet)
@@ -183,6 +186,12 @@ class MmWaveCapture(threading.Thread):
                     return  # Socket closed, exit gracefully
                 raise
 
+            # Skip malformed/foreign datagrams (see first-frame search).
+            # A skipped genuine-but-truncated packet leaves a sequence gap
+            # that the loss detector below catches on the next packet.
+            if packet_data.size != UINT16_IN_PACKET:
+                continue
+
             # Packet loss detection
             if last_packet_num < packet_num - 1:
                 lost_packets = True
@@ -200,14 +209,28 @@ class MmWaveCapture(threading.Thread):
                             return
                         raise
 
+                    if packet_data.size != UINT16_IN_PACKET:
+                        continue
+
                     after_packet_count = (byte_count + BYTES_IN_PACKET) % BYTES_IN_FRAME
 
                     if after_packet_count < BYTES_IN_PACKET:
+                        # Fresh buffer: the aborted frame's partial data must
+                        # not leak into the new frame
+                        recent_frame = np.zeros(UINT16_IN_FRAME, dtype=np.int16)
                         recent_frame[0:after_packet_count // 2] = packet_data[(BYTES_IN_PACKET - after_packet_count) // 2:]
                         self.recent_cap_num = (byte_count + BYTES_IN_PACKET) // BYTES_IN_FRAME
                         recent_frame_collect_count = after_packet_count
                         print("[mmWave] Found new frame, resuming capture")
                         break
+
+                # Restart the main loop with a fresh packet. The recovery
+                # packet above has already been consumed into recent_frame —
+                # falling through to the assembly code below would process the
+                # same packet TWICE, inflating the collect count by one packet
+                # and byte-shifting every subsequent frame (silent corruption).
+                last_packet_num = packet_num
+                continue
 
             # Check if frame is complete
             if recent_frame_collect_count + BYTES_IN_PACKET >= BYTES_IN_FRAME:
@@ -218,7 +241,6 @@ class MmWaveCapture(threading.Thread):
                 self._store_frame(recent_frame, frame_end_time, lost_packets)
 
                 # Prepare for next frame
-                self.lost_packet_flag_array[self.next_cap_position] = False
                 self.recent_cap_num = (byte_count + BYTES_IN_PACKET) // BYTES_IN_FRAME
 
                 recent_frame = np.zeros(UINT16_IN_FRAME, dtype=np.int16)
@@ -248,15 +270,14 @@ class MmWaveCapture(threading.Thread):
                 - lost_packet: whether packet loss occurred for this frame
         """
         with self._lock:
-            if self.latest_read_num != 0:
-                if self.buffer_overwritten:
-                    # Consumer fell behind and the circular buffer wrapped. Instead
-                    # of freezing on this error forever (the old behaviour), drop the
-                    # stale backlog and resync to the newest captured frame — correct
-                    # real-time "show latest" semantics, and self-heals after a hiccup.
-                    self.next_read_position = (self.next_cap_position - 1 + self.buffer_size) % self.buffer_size
-                    self.buffer_overwritten = False
-            else:
+            if self.buffer_overwritten:
+                # Consumer fell behind and the circular buffer wrapped. Instead
+                # of freezing on this error forever (the old behaviour), drop the
+                # stale backlog and resync to the newest captured frame — correct
+                # real-time "show latest" semantics, and self-heals after a hiccup.
+                # (Unconditional: the old `latest_read_num != 0` guard skipped the
+                # resync when the last-read radar frame index happened to be 0.)
+                self.next_read_position = (self.next_cap_position - 1 + self.buffer_size) % self.buffer_size
                 self.buffer_overwritten = False
 
             next_read_pos = (self.next_read_position + 1) % self.buffer_size
@@ -313,7 +334,10 @@ class MmWaveCapture(threading.Thread):
         """
         data, addr = self.data_socket.recvfrom(MAX_PACKET_SIZE)
 
-        packet_num = struct.unpack('<1l', data[:4])[0]
+        # Unsigned: the DCA1000 packet counter is a uint32 — signed parsing
+        # breaks loss detection when the counter passes 2^31 (~41 h of
+        # continuous streaming)
+        packet_num = struct.unpack('<1L', data[:4])[0]
         byte_count = struct.unpack('>Q', b'\x00\x00' + data[4:10][::-1])[0]
         packet_data = np.frombuffer(data[10:], dtype=np.uint16)
 
@@ -326,15 +350,11 @@ class MmWaveCapture(threading.Thread):
         # Close sockets to unblock any pending recvfrom
         try:
             self.data_socket.shutdown(socket.SHUT_RDWR)
-        except:
+        except OSError:
             pass
         try:
             self.data_socket.close()
-        except:
-            pass
-        try:
-            self.config_socket.close()
-        except:
+        except OSError:
             pass
 
     def get_stats(self) -> dict:
