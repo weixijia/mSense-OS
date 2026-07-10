@@ -6,6 +6,7 @@ Handles session creation, directory structure, and metadata management.
 
 import os
 import json
+import threading
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -37,7 +38,8 @@ class Recorder:
         self.frame_count = 0
         self.start_time = None
 
-    def start_session(self, skeleton_enabled: bool = False) -> str:
+    def start_session(self, skeleton_enabled: bool = False,
+                      capture_info: Dict[str, Any] = None) -> str:
         """
         Start a new recording session.
 
@@ -45,12 +47,18 @@ class Recorder:
 
         Args:
             skeleton_enabled: Whether skeleton detection is enabled
+            capture_info: Optional dict describing the active mmWave capture
+                backend (name, timestamp/frame_num semantics) — recorded in
+                metadata so datasets are interpretable offline
 
         Returns:
             Session directory path
         """
-        # Generate session name
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Generate session name. Millisecond suffix guarantees unique
+        # session paths even on immediate restart (the file writer refuses
+        # to reopen paths from a finalized session).
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond // 1000:03d}"
         self.current_session = f"session_{timestamp}"
         self.session_path = self.base_path / self.current_session
 
@@ -61,6 +69,8 @@ class Recorder:
         self.start_time = datetime.now()
         self.frame_count = 0
         self.metadata = self._create_metadata(skeleton_enabled)
+        if capture_info:
+            self.metadata["capture_info"] = capture_info
 
         # Save initial metadata
         self._save_metadata()
@@ -98,9 +108,16 @@ class Recorder:
             "duration_seconds": None,
             "frame_count": 0,
             "skeleton_enabled": skeleton_enabled,
-            "adc_params": ADC_PARAMS,
+            "adc_params": dict(ADC_PARAMS),   # snapshot (--trigger mutates chirps)
             "camera_params": CAMERA_PARAMS,
-            "software_version": "1.0.0",
+            "software_version": "2.0.0",
+            "format_version": 2,
+            "raw_record_format": (
+                "Each raw frame: header '<4sIdBI' "
+                "(magic b'VMRF', frame_num uint32, timestamp float64, "
+                "lost_packet uint8, payload_bytes uint32) followed by "
+                "int16 ADC payload."
+            ),
             "notes": ""
         }
 
@@ -233,30 +250,43 @@ class TimestampLogger:
         """
         self.filepath = filepath
         self.file = None
+        # The mmWave worker thread logs while the GUI thread may close the
+        # file at session stop — every access must hold the lock
+        self._lock = threading.Lock()
 
     def open(self):
         """Open the timestamp file and write header."""
-        self.file = open(self.filepath, 'w')
-        self.file.write("frame_num,mmwave_ts,camera_ts,diff_ms\n")
+        with self._lock:
+            self.file = open(self.filepath, 'w')
+            self.file.write("frame_num,mmwave_ts,camera_ts,diff_ms,lost_packet\n")
 
-    def log(self, frame_num: int, mmwave_ts: float, camera_ts: float):
+    def log(self, frame_num: int, mmwave_ts: float, camera_ts: float,
+            lost_packet: bool = False):
         """
         Log a timestamp entry.
 
         Args:
             frame_num: Frame number
             mmwave_ts: mmWave timestamp
-            camera_ts: Camera timestamp
+            camera_ts: Camera timestamp (0 if no camera frame available)
+            lost_packet: Whether frames/packets were lost before this frame
         """
-        if self.file:
-            diff_ms = abs(mmwave_ts - camera_ts) * 1000 if camera_ts > 0 else -1
-            self.file.write(f"{frame_num},{mmwave_ts:.6f},{camera_ts:.6f},{diff_ms:.2f}\n")
+        with self._lock:
+            if not self.file:
+                return
+            has_both = camera_ts > 0 and mmwave_ts > 0
+            diff_ms = abs(mmwave_ts - camera_ts) * 1000 if has_both else -1
+            self.file.write(f"{frame_num},{mmwave_ts:.6f},{camera_ts:.6f},"
+                            f"{diff_ms:.2f},{1 if lost_packet else 0}\n")
+            # Flush per line (10 Hz) so a crash never loses the whole log
+            self.file.flush()
 
     def close(self):
         """Close the timestamp file."""
-        if self.file:
-            self.file.close()
-            self.file = None
+        with self._lock:
+            if self.file:
+                self.file.close()
+                self.file = None
 
     def __enter__(self):
         self.open()
