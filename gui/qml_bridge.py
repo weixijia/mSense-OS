@@ -66,12 +66,22 @@ def rgb_to_qimage(rgb: np.ndarray) -> QImage:
 
 
 def heatmap_to_qimage(data: np.ndarray) -> QImage:
-    """Apply the viridis colormap to a normalized [0,1] heatmap -> DETACHED QImage."""
+    """Apply the viridis colormap to a normalized [0,1] heatmap -> DETACHED QImage.
+
+    Emits a 32-bit RGBA image (4 bytes/px), NOT RGB888. The RD heatmap is 255
+    wide -> an RGB888 row is 255*3 = 765 bytes, which is not 4-byte aligned;
+    the Qt Quick scene-graph texture path renders that with a per-row shear
+    that shows up as equidistant vertical stripes in RD (but not RA, which is
+    256 wide -> 768, aligned). A 4-channel image is always row-aligned
+    (4*w), so this is width-agnostic and stripe-free."""
     data = np.clip(data.astype(np.float32), 0.0, 1.0)
     idx = (data * 255).astype(np.uint8)
     h, w = data.shape
-    rgb = _VIRIDIS[idx.flatten()].reshape(h, w, 3)
-    return rgb_to_qimage(rgb)
+    rgba = np.empty((h, w, 4), dtype=np.uint8)
+    rgba[:, :, :3] = _VIRIDIS[idx.reshape(-1)].reshape(h, w, 3)
+    rgba[:, :, 3] = 255
+    rgba = np.ascontiguousarray(rgba)
+    return QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy()
 
 
 class FrameView(QQuickPaintedItem):
