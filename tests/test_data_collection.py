@@ -55,12 +55,26 @@ def test_records_all_enabled_streams_raw():
     assert np.array_equal(np.load(os.path.join(d, "RD", "0.npy")), rd)
     assert np.array_equal(np.load(os.path.join(d, "RA", "0.npy")), ra)
     assert np.array_equal(np.load(os.path.join(d, "camera", "0.npy")), cam)
-    # metadata
+    # metadata: orientation is DERIVED from config.dsp, never hardcoded
     meta = json.load(open(os.path.join(d, "metadata.json")))
     assert meta["schema_version"] == "2.0"
-    assert meta["rd_orientation"] == "near_bottom"
+    assert meta["rd_flip_range"] == cfg.dsp.rd_flip_range
+    expected_prefix = "flipped" if cfg.dsp.rd_flip_range else "fft.py-preserved"
+    assert meta["rd_orientation"].startswith(expected_prefix), meta["rd_orientation"]
+    assert "raw_record_format" in meta
     assert meta["adc_params"]["chirps"] == 255 and meta["device"]
     assert "git_commit" in meta and meta["frame_counts"][Topic.RADAR_RD] == 3
+    # raw.bin is self-describing (v2 records: header + payload per frame)
+    from recording.file_writer import RAW_MAGIC, RAW_RECORD_HEADER
+    with open(os.path.join(d, "raw.bin"), "rb") as f:
+        for fid in range(3):
+            magic, fnum, ts, lost, nbytes = RAW_RECORD_HEADER.unpack(
+                f.read(RAW_RECORD_HEADER.size))
+            assert magic == RAW_MAGIC and fnum == fid and not lost
+            assert abs(ts - (1.0 + fid)) < 1e-9
+            payload = np.frombuffer(f.read(nbytes), dtype=np.int16)
+            assert np.array_equal(payload, raw)
+        assert f.read() == b""   # nothing trailing
     # timestamps.csv
     rows = open(os.path.join(d, "timestamps.csv")).read().strip().splitlines()
     assert rows[0] == "topic,frame_id,ts" and len(rows) == 1 + 3 * 6  # header + 18 saved frames

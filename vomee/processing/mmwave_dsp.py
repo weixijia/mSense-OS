@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from ..core.types import Frame, Topic
 from ..processing.base import Processor
@@ -26,9 +26,18 @@ class MmWaveDSP(Processor):
 
     input_topic = Topic.RADAR_RAW
 
-    def __init__(self, num_angle_bins: int = 256):
+    def __init__(self, num_angle_bins: int = 256, flip_range: Optional[bool] = None):
         from core.mmwave_processor import MmWaveProcessor  # finalized, unchanged
-        self._proc = MmWaveProcessor(num_angle_bins=num_angle_bins)
+        # flip_range MUST follow config.MMWAVE_RD_FLIP_RANGE (byte-for-byte
+        # verified against the model's training data — see config.py). The
+        # previous default-False construction silently emitted RD/RA
+        # vertically mirrored vs the training orientation.
+        if flip_range is None:
+            import config as _legacy
+            flip_range = getattr(_legacy, 'MMWAVE_RD_FLIP_RANGE', False)
+        self.flip_range = bool(flip_range)
+        self._proc = MmWaveProcessor(num_angle_bins=num_angle_bins,
+                                     flip_range=self.flip_range)
 
     @property
     def processor(self):

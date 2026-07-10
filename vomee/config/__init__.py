@@ -98,6 +98,17 @@ class ComputeCfg:
 
 
 @dataclass(frozen=True)
+class DspCfg:
+    """RD/RA orientation — MUST match the model's training data.
+
+    Mirrors legacy ``config.MMWAVE_RD_FLIP_RANGE`` (byte-for-byte verified
+    True on 2026-06-22; see the warning block in config.py). A wrong value
+    silently corrupts model input.
+    """
+    rd_flip_range: bool = True
+
+
+@dataclass(frozen=True)
 class AppConfig:
     adc: AdcCfg = field(default_factory=AdcCfg)
     camera: CameraCfg = field(default_factory=CameraCfg)
@@ -108,6 +119,7 @@ class AppConfig:
     display: DisplayCfg = field(default_factory=DisplayCfg)
     record: RecordCfg = field(default_factory=RecordCfg)
     compute: ComputeCfg = field(default_factory=ComputeCfg)
+    dsp: DspCfg = field(default_factory=DspCfg)
 
     @classmethod
     def load(cls) -> "AppConfig":
@@ -154,10 +166,13 @@ class AppConfig:
         disp = DisplayCfg(update_rate_hz=d.get("update_rate_hz", defaults.display.update_rate_hz),
                           rd_size=tuple(d.get("rd_size", defaults.display.rd_size)),
                           ra_size=tuple(d.get("ra_size", defaults.display.ra_size)))
-        return cls(adc=adc, camera=cam, trigger=trig, network=net, buffers=buf, pose=pose, display=disp)
+        dsp = DspCfg(rd_flip_range=getattr(L, "MMWAVE_RD_FLIP_RANGE",
+                                           defaults.dsp.rd_flip_range))
+        return cls(adc=adc, camera=cam, trigger=trig, network=net, buffers=buf,
+                   pose=pose, display=disp, dsp=dsp)
 
 
 __all__ = [
     "AdcCfg", "CameraCfg", "TriggerCfg", "NetworkCfg", "BufferCfg", "PoseCfg",
-    "DisplayCfg", "RecordCfg", "ComputeCfg", "AppConfig",
+    "DisplayCfg", "RecordCfg", "ComputeCfg", "DspCfg", "AppConfig",
 ]

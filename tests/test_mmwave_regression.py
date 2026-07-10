@@ -39,8 +39,13 @@ def _synth_raw() -> np.ndarray:
 
 
 def test_wrapper_byte_identical():
+    """The MmWaveDSP adapter must equal the finalized processor CONFIGURED THE
+    SAME WAY — i.e. with config.MMWAVE_RD_FLIP_RANGE, which the adapter now
+    honors (it previously defaulted to flip=False and silently emitted RD/RA
+    mirrored vs the model's training orientation)."""
     raw = _synth_raw()
-    rd0, ra0, da0 = MmWaveProcessor().process(raw.copy())
+    flip = getattr(config, "MMWAVE_RD_FLIP_RANGE", False)
+    rd0, ra0, da0 = MmWaveProcessor(flip_range=flip).process(raw.copy())
     frames = MmWaveDSP().process(Frame(Topic.RADAR_RAW, 1.5, 42, raw.copy()))
     out = {f.topic: f.data for f in frames}
     assert np.array_equal(out[Topic.RADAR_RD], rd0)
@@ -52,8 +57,9 @@ def test_wrapper_byte_identical():
 
 
 def test_golden_math_stability():
+    """DSP math stability vs committed goldens (which are flip=False)."""
     raw = _synth_raw()
-    rd, ra, da = MmWaveProcessor().process(raw.copy())
+    rd, ra, da = MmWaveProcessor(flip_range=False).process(raw.copy())
     gd = np.load(os.path.join(_FX, "golden_rd.npy"))
     ga = np.load(os.path.join(_FX, "golden_ra.npy"))
     gda = np.load(os.path.join(_FX, "golden_da.npy"))
@@ -65,14 +71,37 @@ def test_golden_math_stability():
 
 
 def test_orientation_preserved_near_at_bottom():
-    """RD/RA must keep range 0 (near) at the BOTTOM (flip=False) — the agreed orientation
-    the recorded .npy / model use. Guards an accidental re-flip."""
+    """flip=False output must keep the golden orientation (not mirrored)."""
     raw = _synth_raw()
-    rd, ra, _ = MmWaveProcessor().process(raw.copy())
+    rd, ra, _ = MmWaveProcessor(flip_range=False).process(raw.copy())
     gd = np.load(os.path.join(_FX, "golden_rd.npy"))
     # identical orientation to golden (not vertically mirrored)
     assert np.allclose(rd, gd, atol=1e-3)
     assert not np.allclose(rd, gd[::-1], atol=1e-3), "RD appears vertically flipped vs golden"
+
+
+def test_flip_true_is_exact_mirror():
+    """flip=True (the PRODUCTION orientation — config.MMWAVE_RD_FLIP_RANGE)
+    must be exactly the range-axis mirror of flip=False, and DA must be
+    unaffected. The regression suite previously never exercised flip=True,
+    so the live path's orientation had zero coverage."""
+    raw = _synth_raw()
+    rd_f, ra_f, da_f = MmWaveProcessor(flip_range=False).process(raw.copy())
+    rd_t, ra_t, da_t = MmWaveProcessor(flip_range=True).process(raw.copy())
+    assert np.allclose(rd_t, rd_f[::-1], atol=1e-6), "flip=True RD is not the mirror of flip=False"
+    assert np.allclose(ra_t, ra_f[::-1], atol=1e-6), "flip=True RA is not the mirror of flip=False"
+    assert np.allclose(da_t, da_f, atol=1e-6), "DA must not depend on flip_range"
+
+
+def test_compute_da_optional():
+    """process(compute_da=False) — the live GUI path — must return identical
+    RD/RA and da=None."""
+    raw = _synth_raw()
+    rd0, ra0, _ = MmWaveProcessor(flip_range=False).process(raw.copy())
+    rd1, ra1, da1 = MmWaveProcessor(flip_range=False).process(raw.copy(), compute_da=False)
+    assert da1 is None
+    assert np.allclose(rd0, rd1, atol=1e-6)
+    assert np.allclose(ra0, ra1, atol=1e-6)
 
 
 if __name__ == "__main__":

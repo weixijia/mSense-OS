@@ -136,7 +136,8 @@ class Recorder(Sink):
         topic, fid, d, rc, fw = frame.topic, frame.frame_id, self.session_dir, self.rc, self._fw
         wrote = True
         if topic == Topic.RADAR_RAW and rc.save_raw:
-            fw.write_raw_mmwave(d / "raw.bin", frame.data, fid)
+            # frame.ts goes into the self-describing raw record header
+            fw.write_raw_mmwave(d / "raw.bin", frame.data, fid, frame.ts)
         elif topic == Topic.RADAR_RD and rc.save_rd:
             fw.write_rd_heatmap(d / "RD" / f"{fid}.npy", frame.data, fid)
         elif topic == Topic.RADAR_RA and rc.save_ra:
@@ -161,7 +162,16 @@ class Recorder(Sink):
             "schema_version": SCHEMA_VERSION,
             "created": datetime.now().isoformat(timespec="seconds"),
             "duration_s": round(time.time() - self._t0, 2) if self._t0 else 0.0,
-            "rd_orientation": "near_bottom",  # range 0 (near) at the bottom (flip=False)
+            # Derived from config, never hardcoded: a wrong orientation label
+            # silently corrupts downstream dataset interpretation
+            "rd_flip_range": self.config.dsp.rd_flip_range,
+            "rd_orientation": ("flipped (flip_range=True, matches Studio-era training data)"
+                               if self.config.dsp.rd_flip_range
+                               else "fft.py-preserved (flip_range=False)"),
+            "raw_record_format": (
+                "Each raw frame: header '<4sIdBI' (magic b'VMRF', frame_num uint32, "
+                "timestamp float64, lost_packet uint8, payload_bytes uint32) + int16 payload"
+            ),
             "device": self.compute.describe() if self.compute else None,
             "git_commit": _git_commit(),
             "adc_params": {"chirps": a.chirps, "rx": a.rx, "tx": a.tx, "samples": a.samples,

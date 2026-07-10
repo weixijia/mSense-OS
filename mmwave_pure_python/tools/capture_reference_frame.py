@@ -20,7 +20,10 @@ os.makedirs(OUT, exist_ok=True)
 print(f"[ref] BYTES_IN_FRAME={BYTES_IN_FRAME:,} (255-loop Studio config)")
 
 cap = MmWaveCapture(); cap.start()
-proc = MmWaveProcessor()
+# Use the PRODUCTION orientation (config.MMWAVE_RD_FLIP_RANGE): a reference
+# frame captured with the default flip=False describes an orientation the
+# live app does not emit, causing spurious mirror mismatches downstream.
+proc = MmWaveProcessor(flip_range=getattr(config, 'MMWAVE_RD_FLIP_RANGE', False))
 raw = None; got = 0; t0 = time.time()
 while got < 12 and time.time() - t0 < 25:
     frame, ts, num, lost = cap.get_frame()

@@ -20,7 +20,9 @@ import numpy as np
 
 print(f"[validate] BYTES_IN_FRAME={BYTES_IN_FRAME:,}")
 cap = MmWaveCapture(); cap.start()
-proc = MmWaveProcessor()
+# Use the PRODUCTION orientation (config.MMWAVE_RD_FLIP_RANGE) — see
+# capture_reference_frame.py
+proc = MmWaveProcessor(flip_range=getattr(config, 'MMWAVE_RD_FLIP_RANGE', False))
 
 got = 0
 t0 = time.time()

@@ -10,8 +10,17 @@ import time
 STATIC_IP = '192.168.33.30'
 DATA_PORT = 4098
 BYTES_IN_PACKET = 1456
-# Vomee/config.py: 255 chirps * 4 rx * 2 tx * 2 IQ * 256 samples * 2 bytes
-BYTES_IN_FRAME = 255 * 4 * 2 * 2 * 256 * 2
+# Derive from config.ADC_PARAMS (chirps is dynamic — --trigger sets it from
+# the .cfg's numLoops); fall back to the 255-loop Studio literal only when
+# run outside the repo root.
+try:
+    import os as _os
+    sys.path.insert(0, _os.getcwd())
+    from config import ADC_PARAMS as _A
+    BYTES_IN_FRAME = (_A['chirps'] * _A['rx'] * _A['tx'] * _A['IQ']
+                      * _A['samples'] * _A['bytes'])
+except ImportError:
+    BYTES_IN_FRAME = 255 * 4 * 2 * 2 * 256 * 2
 
 def main():
     secs = float(sys.argv[1]) if len(sys.argv) > 1 else 3.0

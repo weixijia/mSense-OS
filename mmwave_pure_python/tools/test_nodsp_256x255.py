@@ -10,7 +10,13 @@ from core.mmwave_trigger import DCA1000, RadarUART
 
 CFG = 'mmwave_pure_python/studio_cli/src/profiles/profile_vomee_256x255_cont.cfg'
 JSON = 'mmwave_pure_python/configFiles/cf.json'
-BYTES_IN_FRAME = 255 * 4 * 2 * 2 * 256 * 2          # 2,088,960
+# Derive from config.ADC_PARAMS (chirps is dynamic); 255-loop default = 2,088,960
+try:
+    from config import ADC_PARAMS as _A
+    BYTES_IN_FRAME = (_A['chirps'] * _A['rx'] * _A['tx'] * _A['IQ']
+                      * _A['samples'] * _A['bytes'])
+except ImportError:
+    BYTES_IN_FRAME = 255 * 4 * 2 * 2 * 256 * 2
 
 d = DCA1000()
 print('FPGA', d.read_fpga_version(), '| alive', d.sys_alive_check())
