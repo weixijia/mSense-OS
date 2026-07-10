@@ -85,9 +85,11 @@ class MmWaveProcessor:
 
     def __init__(self, num_angle_bins: int = 256, flip_range: bool = False):
         self.num_angle_bins = num_angle_bins
-        # flip_range: put range 0 (near) at BOTTOM. The default (False) is the verified orientation
-        # for the pure-Python/studio_cli capture. mmWave-Studio-sourced frames (received via
-        # --no-trigger) have the range axis mirrored (different ADC I/Q-interleave), so set True there.
+        # flip_range: put range 0 (near) at BOTTOM when True. PRODUCTION callers
+        # must pass config.MMWAVE_RD_FLIP_RANGE (verified True against the model's
+        # training data — see config.py). The ctor default False exists only so the
+        # committed flip=False golden fixtures stay valid; do NOT rely on it in
+        # pipeline code.
         self.flip_range = flip_range
         self.adc_params = ADC_PARAMS
         self.chirps = ADC_PARAMS['chirps']

@@ -6,7 +6,7 @@ Queue-based file writer for non-blocking I/O operations.
 v2 design (comprehensive-review fixes):
 - The recording unit is an atomic per-frame FrameBundle (raw + heatmaps +
   camera + skeleton). Either a whole frame is queued or a whole frame is
-  dropped (with accounting) — per-modality holes in the dataset are
+  dropped (with accounting) - per-modality holes in the dataset are
   impossible, so a disk stall can no longer silently desync raw.bin from
   the fnum-named .npy streams.
 - The raw mmWave stream is self-describing: each record carries a header
@@ -39,7 +39,7 @@ import sys
 sys.path.append('..')
 from config import BUFFER_PARAMS
 
-# ── Raw .bin record format (format version 2) ────────────────────────────
+# -- Raw .bin record format (format version 2) ----------------------------
 # Each raw mmWave frame is written as:
 #   header: magic 'VMRF' (4s) | frame_num (uint32) | timestamp (float64)
 #           | lost_packet (uint8) | payload_bytes (uint32)
@@ -112,11 +112,11 @@ class FileWriter(threading.Thread):
         self._raw_file_path = None
 
         # Paths finalized by _EndSession. A bundle that lands after the
-        # session close must NOT reopen these (defense in depth — the stop
+        # session close must NOT reopen these (defense in depth - the stop
         # flow also quiesces the worker before closing).
         self._finalized_paths = set()
 
-    # ── Writer thread ────────────────────────────────────────────────────
+    # -- Writer thread ----------------------------------------------------
 
     def run(self):
         """Main writer loop."""
@@ -157,7 +157,7 @@ class FileWriter(threading.Thread):
 
     def _write_bundle(self, b: FrameBundle):
         """Write all modalities of one frame."""
-        # Raw first — it is the ground-truth stream everything derives from
+        # Raw first - it is the ground-truth stream everything derives from
         if b.raw is not None and b.raw_path:
             self._write_raw_record(b.raw_path, b.raw, b.frame_num,
                                    b.mmwave_ts, b.lost_packet)
@@ -225,7 +225,7 @@ class FileWriter(threading.Thread):
         with self._lock:
             self._bytes_written += n
 
-    # ── Producer API ─────────────────────────────────────────────────────
+    # -- Producer API -----------------------------------------------------
 
     def submit_bundle(self, bundle: FrameBundle, timeout: float = 1.0) -> bool:
         """
@@ -234,7 +234,7 @@ class FileWriter(threading.Thread):
         Called from the mmWave worker thread (never the GUI thread), so a
         short blocking timeout is acceptable backpressure. If the queue is
         still full after the timeout the WHOLE bundle is dropped and
-        counted — never individual modalities.
+        counted - never individual modalities.
 
         Returns:
             True if queued, False if dropped
@@ -246,14 +246,14 @@ class FileWriter(threading.Thread):
             with self._lock:
                 self._writes_dropped += 1
                 dropped = self._writes_dropped
-            print(f"[Writer] queue full — dropped frame {bundle.frame_num} "
+            print(f"[Writer] queue full - dropped frame {bundle.frame_num} "
                   f"(total dropped: {dropped})")
             return False
 
-    # ── Per-type compat API (vomee/ bus recorder) ────────────────────────
+    # -- Per-type compat API (vomee/ bus recorder) ------------------------
     # The bus-based rebuild recorder receives topics independently, so it
     # submits single-modality bundles. Unlike the old API, a queue-full
-    # drop discards the NEW item with accounting — it can never leak the
+    # drop discards the NEW item with accounting - it can never leak the
     # unfinished-task counter (the old drop-oldest path deadlocked
     # wait_completion) and never desyncs the raw stream (records are
     # self-describing).
