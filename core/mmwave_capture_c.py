@@ -24,13 +24,38 @@ from typing import Tuple, Union
 
 import numpy as np
 
-from config import NETWORK_PARAMS
+from config import ADC_PARAMS, NETWORK_PARAMS
 
-BYTES_IN_FRAME = (256 * 255 * 2 * 4 * 2 * 2)   # samples*chirps*tx*rx*IQ*bytes = 2,088,960
+
+def _bytes_in_frame() -> int:
+    """Frame size derived from ADC_PARAMS at CALL time.
+
+    Must be a function, not a module constant: `--trigger` mutates
+    ADC_PARAMS['chirps'] from the .cfg's numLoops BEFORE this class is
+    constructed, and the C assembler MUST use the same frame size as
+    MmWaveProcessor's reshape or every frame is silently misaligned.
+    """
+    p = ADC_PARAMS
+    return p['chirps'] * p['rx'] * p['tx'] * p['IQ'] * p['samples'] * p['bytes']
 
 
 class MmWaveCaptureC:
-    """C-thread (off-GIL) UDP receiver + frame assembler. Requires the fpga_udp extension."""
+    """C-thread (off-GIL) UDP receiver + frame assembler. Requires the fpga_udp extension.
+
+    Timestamp/frame-number semantics (recorded into session metadata):
+    - timestamp: wall-clock at PULL time (when Python dequeues from the C
+      ring), NOT at frame assembly. Under consumer backlog it lags real
+      acquisition by up to ring-depth x frame-period.
+    - frame_num: consumer-side counter that ADVANCES OVER ring-overflow
+      drops, so a gap in recorded frame numbers means frames were lost
+      (get_frame also flags the next delivered frame lost=True).
+    The pure-Python fallback (MmWaveCapture) instead stamps assembly time
+    and returns the radar-absolute frame index.
+    """
+
+    # For dataset interpretation (written into recording metadata)
+    timestamp_semantics = "pull_time"
+    frame_num_semantics = "consumer_counter_with_loss_gaps"
 
     def __init__(self, pc_ip: str = None, data_port: int = None, ring_frames: int = 32):
         import fpga_udp                       # raises ImportError if unavailable -> caller falls back
@@ -40,14 +65,20 @@ class MmWaveCaptureC:
         self.pc_ip = pc_ip or NETWORK_PARAMS['pc_ip']
         self.data_port = data_port or NETWORK_PARAMS['data_port']
 
+        # Derived NOW (post --trigger mutation), matching the processor
+        self.bytes_in_frame = _bytes_in_frame()
+
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2 ** 27)
         self.sock.bind((self.pc_ip, self.data_port))
 
-        self._fpga.udp_frame_init(BYTES_IN_FRAME, ring_frames)
+        self._fpga.udp_frame_init(self.bytes_in_frame, ring_frames)
         self._running = True
         self._fid = 0
         self._started = False
+        # Last-seen drop counters, for surfacing loss per get_frame pull
+        self._last_incomplete = 0
+        self._last_overflow = 0
 
     def start(self):
         if self._started:                                # idempotent: never spawn a 2nd C thread
@@ -95,14 +126,40 @@ class MmWaveCaptureC:
 
     def get_frame(self) -> Tuple[Union[np.ndarray, str], float, int, bool]:
         """Non-blocking: pull the next complete real frame, or a 'wait' sentinel.
-        Returned frames are always complete (recv==expected); lost flag is therefore False."""
+
+        Returned frames are always internally complete (recv==expected), but
+        frames may have been LOST before delivery (incomplete-dropped by the
+        assembler, or ring-overflow-dropped when the consumer lags). Those
+        losses are surfaced here: the next delivered frame carries
+        lost=True and the frame counter skips by the number of dropped
+        frames, so recordings show an explicit gap instead of silently
+        contiguous numbering.
+        """
         import time
         raw = self._fpga.udp_frame_get(0)                 # timeout 0 -> non-blocking
-        if raw is None or raw.size < BYTES_IN_FRAME:
+        if raw is None or raw.size < self.bytes_in_frame:
             return "wait new frame", 0.0, -2, False
         frame = raw.view(np.int16)                        # writable int16 view of the fresh C copy
+
+        # Surface drops that happened since the last pull
+        lost = False
+        dropped = 0
+        try:
+            _, incomplete, overflow = self._fpga.udp_frame_stats()
+            dropped = ((int(incomplete) - self._last_incomplete)
+                       + (int(overflow) - self._last_overflow))
+            self._last_incomplete = int(incomplete)
+            self._last_overflow = int(overflow)
+        except Exception:
+            pass
+        if dropped > 0:
+            lost = True
+            self._fid += dropped                          # visible gap in frame numbering
+            print(f"[mmWave-C] {dropped} frame(s) lost since last pull "
+                  f"(incomplete or ring overflow) — gap recorded")
+
         self._fid += 1
-        return frame, time.time(), self._fid, False
+        return frame, time.time(), self._fid, lost
 
     def stop(self):
         self._running = False
