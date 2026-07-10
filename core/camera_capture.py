@@ -217,31 +217,38 @@ class CameraCapture(threading.Thread):
 
     # ── accessors ────────────────────────────────────────────────
 
+    # NOTE on the accessors below: frames are returned BY REFERENCE, not
+    # copied. This is safe because the capture loop only ever REBINDS
+    # self._frame / self._frame_with_skeleton to freshly-allocated arrays
+    # (cvtColor / backend.infer both allocate) and never mutates a published
+    # array in place — so a published frame is effectively immutable.
+    # Consumers must treat them as read-only. Removing the under-lock copies
+    # saves ~166 MB/s of GUI-thread memcpy at 30 fps 1280x720.
+
     def get_frame(self) -> Tuple[Optional[np.ndarray], float, Optional[Dict]]:
-        """Get the latest raw RGB frame (no overlay)."""
+        """Get the latest raw RGB frame (no overlay). Read-only reference."""
         with self._lock:
             if self._frame is None:
                 return None, 0.0, None
-            return self._frame.copy(), self._timestamp, self._landmarks
+            return self._frame, self._timestamp, self._landmarks
 
     def get_frame_with_overlay(self) -> Tuple[Optional[np.ndarray], float, Optional[Dict]]:
-        """Get the latest frame with skeleton overlay (if enabled)."""
+        """Get the latest frame with skeleton overlay (if enabled). Read-only reference."""
         with self._lock:
             if self._frame is None:
                 return None, 0.0, None
             frame = self._frame_with_skeleton if self._enable_skeleton else self._frame
-            return frame.copy(), self._timestamp, self._landmarks
+            return frame, self._timestamp, self._landmarks
 
     def get_frame_full(self):
         """Return (raw, overlay, timestamp, landmarks) atomically from the SAME camera
         frame under one lock — so a saved raw frame, its displayed overlay, its timestamp
-        and its skeleton stay aligned (no inter-call frame skew)."""
+        and its skeleton stay aligned (no inter-call frame skew). Read-only references."""
         with self._lock:
             if self._frame is None:
                 return None, None, 0.0, None
-            raw = self._frame.copy()
-            overlay = (self._frame_with_skeleton if self._enable_skeleton else self._frame).copy()
-            return raw, overlay, self._timestamp, self._landmarks
+            overlay = self._frame_with_skeleton if self._enable_skeleton else self._frame
+            return self._frame, overlay, self._timestamp, self._landmarks
 
     def set_skeleton_enabled(self, enabled: bool):
         with self._lock:
