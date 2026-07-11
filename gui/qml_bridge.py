@@ -1,5 +1,5 @@
 """
-QML bridge for Vomee (PySide6 + Qt Quick).
+QML bridge for mSense OS (PySide6 + Qt Quick).
 
 Objects that connect the Python capture/processing layer to the QML UI:
 
@@ -416,7 +416,7 @@ class AppController(QObject):
     def _capture_info(self) -> dict:
         """Describe the active mmWave backend for session metadata, so
         recorded timestamps/frame numbers are interpretable offline (the C
-        and pure-Python backends have different semantics)."""
+        and Python backends have different semantics)."""
         cap = self._mmwave_capture
         if cap is None:
             return {}

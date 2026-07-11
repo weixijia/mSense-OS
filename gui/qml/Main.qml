@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-import Vomee 1.0
+import MSense 1.0
 
 ApplicationWindow {
     id: win

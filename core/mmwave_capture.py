@@ -92,8 +92,8 @@ class MmWaveCapture(threading.Thread):
         """Initialize the UDP data socket.
 
         NOTE: this class is receive-only. It deliberately does NOT bind the
-        config port (4096) — radar/DCA1000 configuration is mmwave_trigger's
-        job, and holding 4096 here would only risk conflicts with it.
+        config port (4096) — the radar/DCA1000 are configured by mmWave
+        Studio, and holding 4096 here would only risk conflicts.
         """
         self.data_recv = (self.pc_ip, self.data_port)
 

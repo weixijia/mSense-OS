@@ -116,8 +116,8 @@ class MmWaveProcessor:
             compute_da: compute the Doppler-Azimuth map. The live GUI path
                 passes False (nothing consumes DA there), skipping its
                 reduction + log + normalize + device->host transfer per
-                frame. Defaults to True for API compatibility (the vomee/
-                pipeline and offline tools consume DA).
+                frame. Defaults to True for API compatibility (offline
+                tools may consume DA).
         """
         if self.use_torch:
             try:

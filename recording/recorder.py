@@ -108,7 +108,7 @@ class Recorder:
             "duration_seconds": None,
             "frame_count": 0,
             "skeleton_enabled": skeleton_enabled,
-            "adc_params": dict(ADC_PARAMS),   # snapshot (--trigger mutates chirps)
+            "adc_params": dict(ADC_PARAMS),   # snapshot of the active radar params
             "camera_params": CAMERA_PARAMS,
             "software_version": "2.0.0",
             "format_version": 2,

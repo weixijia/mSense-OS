@@ -1,9 +1,9 @@
 """Off-GIL mmWave UDP capture backend (drop-in for MmWaveCapture).
 
-Root cause of frame loss (ultragoal frame-loss-zero / G001): the pure-Python MmWaveCapture
-receive thread shares the GIL with the main thread + file-writer, so under recording load
-(CUDA FFT + per-frame disk I/O) it falls behind, the kernel UDP buffer overflows, and REAL
-packets are dropped (RcvbufErrors +743 with recording vs 0 without).
+Root cause of frame loss: the Python MmWaveCapture receiver thread shares the GIL with the
+main thread + file-writer, so under recording load (GPU FFT + per-frame disk I/O) it falls
+behind, the kernel UDP buffer overflows, and REAL packets are dropped (RcvbufErrors +743 with
+recording vs 0 without).
 
 Fix (G002): the fpga_udp C drain thread (`udp_frame_*`) receives AND assembles complete frames
 with the GIL released, into a ring; Python pulls a ready frame with one memcpy. Validated:
@@ -30,10 +30,9 @@ from config import ADC_PARAMS, NETWORK_PARAMS
 def _bytes_in_frame() -> int:
     """Frame size derived from ADC_PARAMS at CALL time.
 
-    Must be a function, not a module constant: `--trigger` mutates
-    ADC_PARAMS['chirps'] from the .cfg's numLoops BEFORE this class is
-    constructed, and the C assembler MUST use the same frame size as
-    MmWaveProcessor's reshape or every frame is silently misaligned.
+    A function, not a module constant, so the C assembler always uses the
+    same frame size as MmWaveProcessor's reshape (from the current
+    ADC_PARAMS) — otherwise every frame would be silently misaligned.
     """
     p = ADC_PARAMS
     return p['chirps'] * p['rx'] * p['tx'] * p['IQ'] * p['samples'] * p['bytes']
@@ -49,8 +48,8 @@ class MmWaveCaptureC:
     - frame_num: consumer-side counter that ADVANCES OVER ring-overflow
       drops, so a gap in recorded frame numbers means frames were lost
       (get_frame also flags the next delivered frame lost=True).
-    The pure-Python fallback (MmWaveCapture) instead stamps assembly time
-    and returns the radar-absolute frame index.
+    The Python receiver fallback (MmWaveCapture) instead stamps assembly
+    time and returns the radar-absolute frame index.
     """
 
     # For dataset interpretation (written into recording metadata)
@@ -65,7 +64,7 @@ class MmWaveCaptureC:
         self.pc_ip = pc_ip or NETWORK_PARAMS['pc_ip']
         self.data_port = data_port or NETWORK_PARAMS['data_port']
 
-        # Derived NOW (post --trigger mutation), matching the processor
+        # Derived from ADC_PARAMS now, matching the processor's reshape
         self.bytes_in_frame = _bytes_in_frame()
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)

@@ -1,9 +1,13 @@
 """
-Vomee Multi-Modal Data Capture System
+mSense OS — Multi-Modal Data Capture System
 
-Main application entry point (PySide6 + Qt Quick / QML UI). Integrates TI IWR1843
-mmWave radar, webcam with ViTPose skeleton overlay, and synchronized
-recording.
+Main application entry point (PySide6 + Qt Quick / QML UI). Integrates a TI
+IWR1843 mmWave radar (received live over UDP), a webcam with ViTPose skeleton
+overlay, and synchronized recording.
+
+The radar is brought up once by mmWave Studio and then streams autonomously;
+this app is RECEIVE-ONLY — it binds the data port and assembles frames, and
+never configures or resets the radar.
 
 Usage:
     python main.py
@@ -23,6 +27,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterType
 from PySide6.QtCore import QUrl
 
+import config as _cfg
 from config import POSE_PARAMS, CAMERA_PARAMS
 from core.pose import (POSE_BACKENDS, POSE_BACKEND_LABELS,
                        KEYPOINT_GROUPS, KEYPOINT_GROUP_LABELS)
@@ -30,23 +35,11 @@ from gui.qml_bridge import FrameView, AppController
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Vomee Multi-Modal Data Capture System')
+    parser = argparse.ArgumentParser(description='mSense OS — Multi-Modal Data Capture System')
     parser.add_argument('--camera-only', action='store_true',
                         help='Run in camera-only mode (no mmWave radar)')
     parser.add_argument('--no-camera', action='store_true',
                         help='Run without camera (mmWave only)')
-    parser.add_argument('--trigger', action='store_true',
-                        help='Trigger the radar from Python (no mmWave Studio). '
-                             'Sends the .cfg over UART + configures DCA1000. '
-                             'OFF by default: plain `python main.py` is receive-only.')
-    parser.add_argument('--trigger-cfg', type=str, default=None,
-                        help='Radar .cfg for --trigger (default: config MMWAVE_TRIGGER cfg_file)')
-    parser.add_argument('--trigger-com', type=str, default=None,
-                        help='Radar CLI UART port for --trigger (default: config, e.g. COM4)')
-    parser.add_argument('--no-trigger', action='store_true',
-                        help='RECEIVE-ONLY (now the DEFAULT; kept for back-compat). Never touch the '
-                             'radar; force-overrides --trigger. Use when the radar was already started '
-                             'by mmWave Studio and is streaming — main.py just receives the live UDP.')
     parser.add_argument('--recording-dir', type=str, default='./recordings',
                         help='Base directory for recordings (default: ./recordings)')
     parser.add_argument('--camera-device', type=int, default=None,
@@ -63,42 +56,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # ── pure-Python radar trigger (replaces mmWave Studio) ───────
-    # Must run BEFORE MmWaveProcessor()/MmWaveCapture read ADC_PARAMS, so the
-    # frame size matches the .cfg (numLoops -> chirps) automatically.
-    import config as _cfg
-    trig = dict(_cfg.MMWAVE_TRIGGER)
-    triggered = False
-    # RECEIVE-ONLY BY DEFAULT: plain `python main.py` never touches the radar, so it cannot reset/kill
-    # a stream already brought up by mmWave Studio. The radar is triggered from Python ONLY when
-    # --trigger is passed explicitly. (--no-trigger is kept for back-compat and still force-overrides
-    # --trigger; config MMWAVE_TRIGGER['enable'] no longer auto-triggers.)
-    do_trigger = args.trigger and not args.no_trigger
-    if not do_trigger:
-        print("[trigger] receive-only (default): not touching the radar; capturing whatever is already "
-              "streaming to :4098. Pass --trigger to start the radar from Python.")
-    if do_trigger:
-        from core import mmwave_trigger
-        com = args.trigger_com or trig['com_port']
-        baud = trig.get('baud', 921600)
-        cfg_file = args.trigger_cfg or trig['cfg_file']
-        json_file = trig['json_file']
-        print(f"[trigger] starting radar from Python: cfg={cfg_file} com={com}@{baud}")
-        try:
-            n_loops = mmwave_trigger.trigger(com=com, baud=baud, cfg_file=cfg_file, json_file=json_file)
-            if n_loops:
-                _cfg.ADC_PARAMS['chirps'] = n_loops  # keep frame size consistent
-                print(f"[trigger] ADC_PARAMS['chirps'] set to {n_loops} (from frameCfg)")
-            else:
-                print(f"[trigger] WARNING: could not parse frameCfg numLoops from {cfg_file}; "
-                      f"using ADC_PARAMS['chirps']={_cfg.ADC_PARAMS['chirps']} — frame size may "
-                      "mismatch the radar and break the reshape if they differ.")
-            triggered = True
-        except Exception as e:
-            import traceback
-            print(f"[trigger] FAILED: {e}")
-            traceback.print_exc()
-
     app = QGuiApplication(sys.argv)
     app.setApplicationName("mSense OS")
     app.setOrganizationName("mSense OS")
@@ -109,11 +66,9 @@ def main():
     from recording.file_writer import FileWriter
 
     controller = AppController()
-    # RD/RA range orientation. MUST match the orientation the ML model was trained on (mmWave Studio
-    # data). mmWave-Studio-sourced frames (received via --no-trigger) are range-mirrored vs the
-    # pure-Python capture, but whether to flip depends on what the *training* pipeline produced — so
-    # this is an explicit config flag (default False = preserved fft.py orientation), NOT auto-flipped.
-    # Confirm against a training-data RD sample before changing. See config.MMWAVE_RD_FLIP_RANGE.
+    # RD/RA range-axis orientation MUST match the orientation the ML model was trained on.
+    # Explicit config flag (verified byte-for-byte against the training data); a wrong value
+    # silently corrupts model input. See config.MMWAVE_RD_FLIP_RANGE.
     flip_range = getattr(_cfg, 'MMWAVE_RD_FLIP_RANGE', False)
     controller.set_mmwave_processor(MmWaveProcessor(flip_range=flip_range))
     controller.set_recorder(Recorder(args.recording_dir))
@@ -123,10 +78,10 @@ def main():
     controller.set_file_writer(file_writer)
 
     # mmWave capture (unless camera-only). Prefer the off-GIL C receiver (fpga_udp
-    # udp_read_thread): it drains the kernel UDP buffer in a C thread with the GIL released,
-    # so recording/FFT/GUI load can't starve it and drop real packets (see ultragoal
-    # frame-loss-zero). Falls back to the pure-Python receiver if fpga_udp is unavailable
-    # (e.g. macOS without the built extension). Neither path fabricates data.
+    # udp_frame_*): it drains the kernel UDP buffer in a C thread with the GIL released,
+    # so recording/FFT/GUI load can't starve it and drop real packets. Falls back to the
+    # Python receiver if fpga_udp is not built (e.g. macOS, or Windows without the
+    # extension). Neither path fabricates data.
     mmwave_capture = None
     if not args.camera_only:
         try:
@@ -136,13 +91,13 @@ def main():
             controller.set_mmwave_capture(mmwave_capture)
             print("mmWave capture initialized (off-GIL C receiver)")
         except Exception as e:
-            print(f"[mmWave] C receiver unavailable ({e}); falling back to pure-Python receiver")
+            print(f"[mmWave] C receiver unavailable ({e}); falling back to the Python receiver")
             try:
                 from core.mmwave_capture import MmWaveCapture
                 mmwave_capture = MmWaveCapture()
                 mmwave_capture.start()
                 controller.set_mmwave_capture(mmwave_capture)
-                print("mmWave capture initialized (pure-Python)")
+                print("mmWave capture initialized (Python receiver)")
             except Exception as e2:
                 print(f"Warning: Could not initialize mmWave capture: {e2}")
 
@@ -173,7 +128,7 @@ def main():
             camera_capture = None
 
     # ── QML engine ───────────────────────────────────────────────
-    qmlRegisterType(FrameView, "Vomee", 1, 0, "FrameView")
+    qmlRegisterType(FrameView, "MSense", 1, 0, "FrameView")
 
     engine = QQmlApplicationEngine()
     ctx = engine.rootContext()
@@ -213,14 +168,6 @@ def main():
     app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     if mmwave_capture:
         mmwave_capture.stop()
-    if triggered and trig.get('stop_on_exit'):
-        try:
-            from core import mmwave_trigger
-            mmwave_trigger.stop_radar(com=args.trigger_com or trig['com_port'],
-                                      baud=trig.get('baud', 115200))
-            print("[trigger] sensorStop sent")
-        except Exception as e:
-            print(f"[trigger] stop_radar skipped: {e}")
     if camera_capture:
         camera_capture.stop()
     if file_writer:

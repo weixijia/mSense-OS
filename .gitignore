@@ -151,9 +151,6 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
-
 # mypy
 .mypy_cache/
 .dmypy.json
@@ -205,10 +202,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-DEVELOPMENT.md
-Vomee_development_plan.md
 
-# --- Vomee: model weights (large binaries, auto-downloaded on first run) ---
+# --- Model weights (large binaries, auto-downloaded on first run) ---
 models/*.pth
 models/*.pt
 models/*.onnx
@@ -225,8 +220,3 @@ output/
 
 # OMC orchestration state (local)
 .omc/
-
-# mmWave Studio USB captures: track ONLY the small filtered FTDI+XDS110 trace,
-# never the multi-GB raw capture (mostly webcam noise).
-studio_trace/*.pcapng
-!studio_trace/studio_bringup_ftdi_xds.pcapng

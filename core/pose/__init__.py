@@ -1,5 +1,5 @@
 """
-Pose-estimation backend for Vomee.
+Pose-estimation backend for mSense OS.
 
 ViTPose (smallest 's' model) is the skeleton-tracking backend and runs cross-platform
 (CUDA on NVIDIA, Apple Silicon MPS, or CPU — selected automatically).

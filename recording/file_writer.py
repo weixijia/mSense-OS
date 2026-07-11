@@ -250,40 +250,6 @@ class FileWriter(threading.Thread):
                   f"(total dropped: {dropped})")
             return False
 
-    # -- Per-type compat API (vomee/ bus recorder) ------------------------
-    # The bus-based rebuild recorder receives topics independently, so it
-    # submits single-modality bundles. Unlike the old API, a queue-full
-    # drop discards the NEW item with accounting - it can never leak the
-    # unfinished-task counter (the old drop-oldest path deadlocked
-    # wait_completion) and never desyncs the raw stream (records are
-    # self-describing).
-
-    def write_raw_mmwave(self, path: Path, data: np.ndarray, frame_num: int,
-                         timestamp: float = 0.0, lost: bool = False) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, mmwave_ts=timestamp,
-                                              lost_packet=lost, raw=data, raw_path=path),
-                                  timeout=0.05)
-
-    def write_rd_heatmap(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, rd=data, rd_path=path),
-                                  timeout=0.05)
-
-    def write_ra_heatmap(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, ra=data, ra_path=path),
-                                  timeout=0.05)
-
-    def write_da_heatmap(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, da=data, da_path=path),
-                                  timeout=0.05)
-
-    def write_camera_frame(self, path: Path, data: np.ndarray, frame_num: int) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, camera_frame=data,
-                                              camera_path=path), timeout=0.05)
-
-    def write_skeleton(self, path: Path, data: dict, frame_num: int) -> bool:
-        return self.submit_bundle(FrameBundle(frame_num=frame_num, skeleton=data,
-                                              skeleton_path=path), timeout=0.05)
-
     def end_session(self, timeout: float = 2.0) -> bool:
         """
         Queue an end-of-session flush/close of the raw file.

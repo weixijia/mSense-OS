@@ -1,4 +1,4 @@
-# Vomee Multi-Modal Data Capture System Configuration
+# mSense OS — Multi-Modal Data Capture System Configuration
 
 # Radar frame sampling period (ms) - 100ms = 10 Hz
 periodicity = 100
@@ -14,16 +14,12 @@ ADC_PARAMS = {
 }
 
 # RD/RA range-axis orientation for the processor.
-#   False = preserved fft.py orientation (unchanged; what the regression golden + the pure-Python
-#           capture use). For mmWave-Studio-sourced frames this renders near (range 0) at the TOP.
-#   True  = flip so near is at the BOTTOM (Studio frames are range-mirrored vs the pure-Python path).
-# ⚠️ This MUST match the orientation the ML model was TRAINED on (mmWave Studio recordings). Do NOT
-# set by visual preference — verify against a real training-data RD sample first. Same array is
-# displayed AND fed to the model AND written to HDF5, so a wrong value silently corrupts model input.
-# VERIFIED 2026-06-22: =True matches the model's training data byte-for-byte. Training RDs were made by
-# the original Studio-era mmwave_silent/fft.py, which always flips RD/RA [::-1] (DA not flipped). Proof:
-# our processor(flip_range=True) on a training raw frame == that session's saved RD/*.npy to max-abs
-# 1.2e-7; flip_range=False differed by 0.57.
+#   True  = flip so near (range 0) is at the BOTTOM.
+#   False = preserved fft.py orientation (near at the TOP).
+# ⚠️ This MUST match the orientation the ML model was TRAINED on. Do NOT set by visual
+# preference — the same array is displayed AND fed to the model AND recorded, so a wrong
+# value silently corrupts model input. Verified True matches the training data byte-for-byte
+# (max-abs 1.2e-7; False differed by 0.57).
 MMWAVE_RD_FLIP_RANGE = True
 
 # Camera Parameters
@@ -32,19 +28,6 @@ CAMERA_PARAMS = {
     'width': 1280,      # Frame width
     'height': 720,      # Frame height
     'fps': 30           # Target frame rate
-}
-
-# Pure-Python mmWave trigger (replaces mmWave Studio). Off by default so the
-# existing Studio workflow is unaffected. Enable with `python main.py --trigger`.
-# When triggering, ADC_PARAMS['chirps'] is auto-set from the .cfg's frameCfg numLoops.
-MMWAVE_TRIGGER = {
-    'enable': False,
-    'com_port': 'auto',                                       # radar CLI UART; 'auto' detects the XDS110 (Linux /dev/ttyACM0, macOS /dev/cu.usbmodem*, Windows COMx). Override with --trigger-com.
-    'baud': 921600,                                           # no-DSP studio_cli firmware uses 921600 (mmw_demo was 115200)
-    # No-DSP firmware profile: 256 samples x 255 loops, NO cfar/gui -> full 256x255 raw ADC, no detection-matrix cap.
-    'cfg_file': 'mmwave_pure_python/studio_cli/src/profiles/profile_vomee_256x255_cont.cfg',
-    'json_file': 'mmwave_pure_python/configFiles/cf.json',
-    'stop_on_exit': True,                                     # sensorStop when Vomee closes
 }
 
 # Network Configuration for mmWave Radar

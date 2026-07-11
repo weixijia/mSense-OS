@@ -18,7 +18,7 @@ import numpy as np
 from .base import PoseBackend
 from .groups import active_indices
 
-# Vomee project root (…/Vomee) and default model directory.
+# Project root and default model directory.
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _MODELS_DIR = os.path.join(_PROJECT_ROOT, "models")
 
