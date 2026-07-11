@@ -218,5 +218,14 @@ recordings/
 output/
 *.json
 
+# Physiological sensing research — track docs (*.md) only; ignore external
+# clones and multi-GB datasets / large binary results.
+physiological_sensing_research/repos/
+physiological_sensing_research/datasets/*/
+physiological_sensing_research/**/*.bin
+physiological_sensing_research/**/*.npy
+
 # OMC orchestration state (local)
 .omc/
+/physiological_sensing_research
+tools/collect_vitals.py
